@@ -6,6 +6,7 @@ import google.protobuf.text_format
 from PySide6.QtSerialPort import QSerialPortInfo
 from PySide6.QtWidgets import QDialog, QAbstractButton, QDialogButtonBox, QAbstractItemView, QHeaderView, QComboBox, QTableWidgetItem, QCheckBox, QApplication, QLabel, QHBoxLayout, QWidget
 from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QIcon
 
 from qt_ui.preferences_dialog_ui import Ui_PreferencesDialog
 from qt_ui.models.funscript_kit import FunscriptKitModel
@@ -421,8 +422,15 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
             # Populate with available icons from resources/icons/
             icons_dir = os.path.join(os.getcwd(), 'resources', 'icons')
             if os.path.exists(icons_dir):
-                icon_files = [f[:-4] for f in os.listdir(icons_dir) if f.endswith('.png')]
-                self.icon_theme_combobox.addItems(sorted(icon_files))
+                icon_files = sorted([f[:-4] for f in os.listdir(icons_dir) if f.endswith('.png')])
+                for icon_name in icon_files:
+                    icon_path = os.path.join(icons_dir, f'{icon_name}.png')
+                    try:
+                        icon = QIcon(icon_path)
+                        self.icon_theme_combobox.addItem(icon, icon_name)
+                    except Exception as e:
+                        logger.warning(f"Failed to load icon {icon_name}: {e}")
+                        self.icon_theme_combobox.addItem(icon_name)
             
             # Add to the display settings layout
             layout = display_group.layout()
