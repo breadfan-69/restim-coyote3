@@ -94,8 +94,10 @@ class CoyoteDevice(OutputDevice, QObject):
                         self.connection_stage = ConnectionStage.CONNECTING
                     else:
                         attempt_counter += 1
-                        logger.info(f"{LOG_PREFIX} Device not found (attempt {attempt_counter}); retrying in {SCAN_RETRY_SECONDS} seconds...")
-                        await asyncio.sleep(SCAN_RETRY_SECONDS)
+                        # Exponential backoff: 2s, 4s, 8s, max 15s
+                        retry_delay = min(2 ** (attempt_counter - 1) * 2, 15)
+                        logger.info(f"{LOG_PREFIX} Device not found (attempt {attempt_counter}); retrying in {retry_delay}s...")
+                        await asyncio.sleep(retry_delay)
                         
                 elif self.connection_stage == ConnectionStage.CONNECTING:
                     try:
@@ -297,34 +299,50 @@ class CoyoteDevice(OutputDevice, QObject):
             return False
 
     async def _scan_for_device(self):
-        """Scan for Coyote device with improved retry logic"""
+        """Scan for Coyote device with aggressive retry and adapter refresh"""
         try:
             logger.info(f"{LOG_PREFIX} Scanning for device: {self.device_name}")
             
-            # Try with extended timeout (default is usually 5 seconds)
-            device = await BleakScanner.find_device_by_name(self.device_name, timeout=10.0)
+            # First attempt: Quick scan with standard timeout
+            device = await BleakScanner.find_device_by_name(self.device_name, timeout=5.0)
             if device:
                 logger.info(f"{LOG_PREFIX} Found device: {device.name} ({device.address})")
                 self.client = BleakClient(device)
                 self.connection_stage = ConnectionStage.CONNECTING
                 return True
-            else:
-                logger.info(f"{LOG_PREFIX} No BLE advertisement for {self.device_name} detected during scan window (timeout 10s)")
-                
-                # Fallback: scan all devices and log them for debugging
-                logger.info(f"{LOG_PREFIX} Scanning for all available BLE devices...")
-                try:
-                    devices = await BleakScanner.discover(timeout=10.0)
-                    if devices:
-                        logger.info(f"{LOG_PREFIX} Found {len(devices)} BLE device(s):")
-                        for dev in devices:
-                            logger.info(f"{LOG_PREFIX}   - {dev.name or 'Unknown'} ({dev.address})")
-                    else:
-                        logger.info(f"{LOG_PREFIX} No BLE devices found in range. Bluetooth adapter may be disabled or not ready.")
-                except Exception as scan_err:
-                    logger.error(f"{LOG_PREFIX} Error scanning for all devices: {scan_err}")
-                
-                return False
+            
+            # Device not found in first scan - may need adapter refresh
+            logger.info(f"{LOG_PREFIX} First scan failed, refreshing adapter state...")
+            
+            # Second attempt: Scan all devices to refresh adapter (15 second scan)
+            try:
+                devices = await BleakScanner.discover(timeout=15.0)
+                if devices:
+                    logger.info(f"{LOG_PREFIX} Found {len(devices)} BLE device(s) during refresh scan:")
+                    for dev in devices:
+                        logger.info(f"{LOG_PREFIX}   - {dev.name or 'Unknown'} ({dev.address})")
+                        if dev.name == self.device_name:
+                            logger.info(f"{LOG_PREFIX} Coyote found during refresh scan!")
+                            self.client = BleakClient(dev)
+                            self.connection_stage = ConnectionStage.CONNECTING
+                            return True
+                else:
+                    logger.info(f"{LOG_PREFIX} No BLE devices found during refresh scan. Bluetooth adapter may be disabled or not ready.")
+            except Exception as scan_err:
+                logger.error(f"{LOG_PREFIX} Error during refresh scan: {scan_err}")
+            
+            # Third attempt: Final scan with very long timeout
+            logger.info(f"{LOG_PREFIX} Final scan attempt with extended timeout...")
+            device = await BleakScanner.find_device_by_name(self.device_name, timeout=20.0)
+            if device:
+                logger.info(f"{LOG_PREFIX} Found device on final attempt: {device.name} ({device.address})")
+                self.client = BleakClient(device)
+                self.connection_stage = ConnectionStage.CONNECTING
+                return True
+            
+            logger.warning(f"{LOG_PREFIX} Device {self.device_name} not found after all scan attempts. User may need to toggle Bluetooth or check device power.")
+            return False
+            
         except Exception as e:
             logger.error(f"{LOG_PREFIX} Scan error: {e}")
             await self.disconnect()
