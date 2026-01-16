@@ -106,6 +106,8 @@ class CoyoteDevice(OutputDevice, QObject):
                         self.connection_stage = ConnectionStage.SERVICE_DISCOVERY
                     except Exception as e:
                         logger.error(f"{LOG_PREFIX} Connection failed: {e}")
+                        # Reset client and go back to scanning
+                        self.client = None
                         await self.disconnect()
                         
                 elif self.connection_stage == ConnectionStage.SERVICE_DISCOVERY:
@@ -339,6 +341,19 @@ class CoyoteDevice(OutputDevice, QObject):
                 self.client = BleakClient(device)
                 self.connection_stage = ConnectionStage.CONNECTING
                 return True
+            
+            # Fourth attempt: One more discovery scan with different settings
+            logger.info(f"{LOG_PREFIX} Fourth scan attempt using discover()...")
+            try:
+                devices = await BleakScanner.discover(timeout=10.0)
+                for dev in devices:
+                    if dev.name == self.device_name:
+                        logger.info(f"{LOG_PREFIX} Coyote found on fourth attempt!")
+                        self.client = BleakClient(dev)
+                        self.connection_stage = ConnectionStage.CONNECTING
+                        return True
+            except Exception as e:
+                logger.error(f"{LOG_PREFIX} Error on fourth scan: {e}")
             
             logger.warning(f"{LOG_PREFIX} Device {self.device_name} not found after all scan attempts. User may need to toggle Bluetooth or check device power.")
             return False
