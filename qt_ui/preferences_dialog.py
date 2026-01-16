@@ -418,29 +418,41 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
             # Create label and combobox
             self.icon_theme_label = QLabel("Icon Theme:")
             self.icon_theme_combobox = QComboBox()
+            self.icon_theme_combobox.setMinimumHeight(30)  # Ensure it's visible
             
             # Populate with available icons from resources/icons/
             icons_dir = os.path.join(os.getcwd(), 'resources', 'icons')
-            if os.path.exists(icons_dir):
-                icon_files = sorted([f[:-4] for f in os.listdir(icons_dir) if f.endswith('.png')])
-                for icon_name in icon_files:
-                    icon_path = os.path.join(icons_dir, f'{icon_name}.png')
-                    try:
-                        icon = QIcon(icon_path)
-                        self.icon_theme_combobox.addItem(icon, icon_name)
-                    except Exception as e:
-                        logger.warning(f"Failed to load icon {icon_name}: {e}")
-                        self.icon_theme_combobox.addItem(icon_name)
+            try:
+                if os.path.exists(icons_dir):
+                    icon_files = sorted([f[:-4] for f in os.listdir(icons_dir) if f.endswith('.png')])
+                    for icon_name in icon_files:
+                        icon_path = os.path.join(icons_dir, f'{icon_name}.png')
+                        if os.path.exists(icon_path):
+                            try:
+                                icon = QIcon(icon_path)
+                                self.icon_theme_combobox.addItem(icon, icon_name)
+                            except Exception as e:
+                                logger.warning(f"Failed to load icon {icon_name}: {e}")
+                                self.icon_theme_combobox.addItem(icon_name)
+                        else:
+                            self.icon_theme_combobox.addItem(icon_name)
+                else:
+                    # If resources dir doesn't exist, just add hardcoded options
+                    for theme_name in ['coyote', 'walnut', 'cherries', 'banana']:
+                        self.icon_theme_combobox.addItem(theme_name)
+            except Exception as e:
+                logger.error(f"Error setting up icon theme selector: {e}")
+                # Fallback: just add hardcoded options
+                for theme_name in ['coyote', 'walnut', 'cherries', 'banana']:
+                    self.icon_theme_combobox.addItem(theme_name)
             
             # Add to the display settings layout
             layout = display_group.layout()
-            if layout:
-                row_count = layout.rowCount() if hasattr(layout, 'rowCount') else 0
-                if hasattr(layout, 'addRow'):
+            if layout and hasattr(layout, 'addRow'):
+                try:
                     layout.addRow(self.icon_theme_label, self.icon_theme_combobox)
-                else:
-                    layout.addWidget(self.icon_theme_label)
-                    layout.addWidget(self.icon_theme_combobox)
+                except Exception as e:
+                    logger.error(f"Failed to add icon theme to layout: {e}")
     
     def setup_dark_mode_toggle(self):
         """Setup dark mode toggle in display tab"""
