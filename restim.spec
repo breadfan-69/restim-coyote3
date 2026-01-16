@@ -5,8 +5,8 @@ a = Analysis(
     ['restim.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('resources', 'resources')],
-    hiddenimports=['restim_rc'],
+    datas=[('resources/phase diagram bg.svg', 'resources/'), ('resources/favicon.png', 'resources/')],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['resources\\icons\\cherries.png'],
+    icon=['resources\\icons\\cherries.ico'],
 )
