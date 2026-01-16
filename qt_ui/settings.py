@@ -219,4 +219,4 @@ pattern_enabled = DictSetting("patterns/enabled", {})
 
 # Theme settings
 dark_mode_enabled = Setting('theme/dark_mode', False, bool)
-icon_theme = Setting('theme/icon_theme', 'coyote', str)
+icon_theme = Setting('theme/icon_theme', 'cherries', str)
