@@ -418,6 +418,14 @@ class PulseGraph(QWidget):
         self.scene = QGraphicsScene()
         self.view.setScene(self.scene)
         
+        # Set background based on theme
+        from qt_ui import settings as qt_settings
+        dark_mode = qt_settings.dark_mode_enabled.get()
+        if dark_mode:
+            self.view.setBackgroundBrush(QColor("#2d2d2d"))
+        else:
+            self.view.setBackgroundBrush(QColor("#ffffff"))
+        
         # Completely disable scrolling and user interaction
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)

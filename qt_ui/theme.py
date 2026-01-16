@@ -3,6 +3,211 @@ from PySide6.QtWidgets import QApplication, QGraphicsView
 from PySide6.QtGui import QColor
 from qt_ui import settings
 
+# Import resources to register Qt resource paths
+try:
+    from qt_ui import restim_rc  # noqa: F401
+except ImportError:
+    pass
+
+
+# Light mode stylesheet - matches original diglet48 styling (mostly default)
+LIGHT_STYLESHEET = """
+/* Light mode uses mostly default Qt styling */
+QMainWindow, QWidget {
+    background-color: #ffffff;
+    color: #000000;
+}
+
+QFrame {
+    background-color: #ffffff;
+    color: #000000;
+}
+
+QMenuBar {
+    background-color: #f0f0f0;
+    color: #000000;
+}
+
+QMenuBar::item:selected {
+    background-color: #e0e0e0;
+}
+
+QMenu {
+    background-color: #ffffff;
+    color: #000000;
+    border: 1px solid #cccccc;
+}
+
+QMenu::item:selected {
+    background-color: #0d47a1;
+    color: #ffffff;
+}
+
+QPushButton {
+    background-color: #0d47a1;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 15px;
+}
+
+QPushButton:hover {
+    background-color: #0d3f7f;
+}
+
+QLineEdit {
+    background-color: #ffffff;
+    color: #000000;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    padding: 5px;
+}
+
+QLineEdit:focus {
+    border: 1px solid #0d47a1;
+}
+
+QSpinBox, QDoubleSpinBox {
+    background-color: #ffffff;
+    color: #000000;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    padding: 5px;
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    background-color: #f0f0f0;
+    border: 1px solid #cccccc;
+    width: 20px;
+}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: #e0e0e0;
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url(:/restim/arrow-up-light.svg);
+    width: 16px;
+    height: 16px;
+}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url(:/restim/arrow-down-light.svg);
+    width: 16px;
+    height: 16px;
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 1px solid #0d47a1;
+}
+
+QCheckBox {
+    color: #000000;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+}
+
+QCheckBox::indicator:unchecked {
+    background-color: #ffffff;
+    border: 1px solid #cccccc;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #0d47a1;
+    border: 1px solid #0d47a1;
+}
+
+QRadioButton {
+    color: #000000;
+}
+
+QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
+}
+
+QRadioButton::indicator:unchecked {
+    background-color: #ffffff;
+    border: 2px solid #cccccc;
+    border-radius: 9px;
+}
+
+QRadioButton::indicator:checked {
+    background-color: #0d47a1;
+    border: 2px solid #0d47a1;
+    border-radius: 9px;
+}
+
+QSlider::groove:horizontal {
+    background-color: #e0e0e0;
+    height: 8px;
+    border-radius: 4px;
+}
+
+QSlider::handle:horizontal {
+    background-color: #0d47a1;
+    width: 18px;
+    margin: -5px 0;
+    border-radius: 9px;
+}
+
+QComboBox {
+    background-color: #ffffff;
+    color: #000000;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    padding: 5px;
+}
+
+QComboBox::drop-down {
+    background-color: #f0f0f0;
+    border: none;
+    width: 20px;
+}
+
+QComboBox::down-arrow {
+    image: url(:/restim/arrow-down-light.svg);
+    width: 16px;
+    height: 16px;
+}
+
+QTabBar::tab {
+    background-color: #f0f0f0;
+    color: #000000;
+    padding: 5px 15px;
+    border: 1px solid #cccccc;
+    border-bottom: none;
+}
+
+QTabBar::tab:selected {
+    background-color: #ffffff;
+    color: #000000;
+}
+
+QTabWidget::pane {
+    border: 1px solid #cccccc;
+}
+
+QGroupBox {
+    color: #000000;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    margin-top: 10px;
+    padding-top: 10px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 3px 0 3px;
+}
+"""
 
 DARK_STYLESHEET = """
 /* Main Window and Widgets */
@@ -88,6 +293,30 @@ QSpinBox, QDoubleSpinBox {
     padding: 5px;
 }
 
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    background-color: #3d3d3d;
+    border: 1px solid #2d2d2d;
+    width: 20px;
+}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: #4d4d4d;
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url(:/restim/arrow-up.svg);
+    width: 16px;
+    height: 16px;
+}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url(:/restim/arrow-down.svg);
+    width: 16px;
+    height: 16px;
+}
+
 QSpinBox:focus, QDoubleSpinBox:focus {
     border: 1px solid #0d47a1;
 }
@@ -125,13 +354,13 @@ QComboBox:focus {
 
 QComboBox::drop-down {
     border: none;
+    width: 20px;
 }
 
 QComboBox::down-arrow {
-    image: none;
-    background-color: #0d47a1;
-    width: 12px;
-    height: 12px;
+    image: url(:/restim/arrow-down.svg);
+    width: 16px;
+    height: 16px;
 }
 
 /* CheckBox and RadioButton */
@@ -272,65 +501,56 @@ QFileDialog, QColorDialog {
 }
 """
 
-LIGHT_STYLESHEET = ""
-
 
 def apply_theme(app: QApplication, dark_mode: bool = None):
-    """Apply theme to the application - dark mode is always enabled
+    """Apply theme to the application
     
     Args:
         app: QApplication instance
-        dark_mode: Ignored, dark mode is always enabled
+        dark_mode: If True, apply dark mode. If False, apply light mode. If None, use setting.
     """
-    # Dark mode is always enabled
+    if dark_mode is None:
+        dark_mode = settings.dark_mode_enabled.get()
+    
     app.setStyle('Fusion')
-    app.setStyleSheet(DARK_STYLESHEET)
-    settings.dark_mode_enabled.set(True)
+    
+    if dark_mode:
+        app.setStyleSheet(DARK_STYLESHEET)
+    else:
+        app.setStyleSheet(LIGHT_STYLESHEET)
+    
+    settings.dark_mode_enabled.set(dark_mode)
     
     # Update graphics views
-    update_graphics_views(app, True)
+    update_graphics_views(app, dark_mode)
 
 
 def toggle_dark_mode(app: QApplication):
     """Toggle dark mode on/off"""
     current = settings.dark_mode_enabled.get()
     apply_theme(app, not current)
-    update_graphics_views(app, not current)
 
 
 def update_graphics_views(app: QApplication, dark_mode: bool = None):
     """Update all graphics views in the application to match theme"""
-    from qt_ui import resources
-    
     if dark_mode is None:
         dark_mode = settings.dark_mode_enabled.get()
     
-    # Get all graphics views
+    # Get all widgets and update those with theme support
     for widget in app.allWidgets():
-        if isinstance(widget, QGraphicsView):
-            if dark_mode:
-                widget.setBackgroundBrush(QColor("#2d2d2d"))
-            else:
-                widget.setBackgroundBrush(QColor("#ffffff"))
-            widget.update()  # Force repaint
-    
-    # Update phase diagram SVG based on theme
-    # This will reload graphics items that use the SVG
-    for widget in app.allWidgets():
-        if hasattr(widget, 'svg') and hasattr(widget, 'scene'):
-            # Remove old SVG
-            if widget.svg:
-                widget.scene.removeItem(widget.svg)
-            
-            # Add new SVG with correct theme
-            from PySide6 import QtSvgWidgets
-            from PySide6.QtCore import QPointF
-            
-            svg_path = resources.phase_diagram_bg if dark_mode else resources.phase_diagram_bg_light
-            svg = QtSvgWidgets.QGraphicsSvgItem(svg_path)
-            widget.scene.addItem(svg)
-            svg.setPos(-svg.boundingRect().width()/2.0, -svg.boundingRect().height()/2.0)
-            widget.svg = svg
-            widget.update()  # Force repaint
+        try:
+            # Check if widget has a set_theme method (our custom widgets)
+            if hasattr(widget, 'set_theme') and callable(getattr(widget, 'set_theme')):
+                widget.set_theme(dark_mode)
+            # Also update standard QGraphicsView widgets
+            elif isinstance(widget, QGraphicsView):
+                if dark_mode:
+                    widget.setBackgroundBrush(QColor("#2d2d2d"))
+                else:
+                    widget.setBackgroundBrush(QColor("#ffffff"))
+                widget.update()
+        except Exception as e:
+            # Silently ignore errors updating specific widgets
+            pass
 
 

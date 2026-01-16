@@ -39,14 +39,17 @@ class ThreephaseWidgetBase(QtWidgets.QGraphicsView):
 
         scene = QtWidgets.QGraphicsScene()
         self.setScene(scene)
-        svg = QtSvgWidgets.QGraphicsSvgItem(resources.phase_diagram_bg)
+        
+        # Load appropriate SVG based on theme
+        dark_mode = settings.dark_mode_enabled.get()
+        svg_path = resources.phase_diagram_bg if dark_mode else resources.phase_diagram_bg_light
+        svg = QtSvgWidgets.QGraphicsSvgItem(svg_path)
         scene.addItem(svg)
         svg.setPos(-svg.boundingRect().width()/2.0, -svg.boundingRect().height()/2.0)
         self.svg = svg
         self.scene = scene
         
         # Set background based on theme
-        dark_mode = settings.dark_mode_enabled.get()
         if dark_mode:
             self.setBackgroundBrush(QColor("#2d2d2d"))
         else:
@@ -57,6 +60,29 @@ class ThreephaseWidgetBase(QtWidgets.QGraphicsView):
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
 
         self.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)  # makes SVG look better on odd dpi settings
+
+    def set_theme(self, dark_mode: bool):
+        """Update the widget theme for dark/light mode"""
+        try:
+            # Update background color
+            if dark_mode:
+                self.setBackgroundBrush(QColor("#2d2d2d"))
+            else:
+                self.setBackgroundBrush(QColor("#ffffff"))
+            
+            # Update SVG based on theme
+            if self.svg:
+                self.scene.removeItem(self.svg)
+            
+            svg_path = resources.phase_diagram_bg if dark_mode else resources.phase_diagram_bg_light
+            svg = QtSvgWidgets.QGraphicsSvgItem(svg_path)
+            self.scene.addItem(svg)
+            svg.setPos(-svg.boundingRect().width()/2.0, -svg.boundingRect().height()/2.0)
+            self.svg = svg
+            self.update()
+        except Exception as e:
+            # Silently handle errors
+            pass
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         self.fitInView(-100, -100, 200, 200, Qt.KeepAspectRatio)

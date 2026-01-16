@@ -1,9 +1,10 @@
 import functools
 import logging
+import os
 
 import google.protobuf.text_format
 from PySide6.QtSerialPort import QSerialPortInfo
-from PySide6.QtWidgets import QDialog, QAbstractButton, QDialogButtonBox, QAbstractItemView, QHeaderView, QComboBox, QTableWidgetItem, QCheckBox, QApplication
+from PySide6.QtWidgets import QDialog, QAbstractButton, QDialogButtonBox, QAbstractItemView, QHeaderView, QComboBox, QTableWidgetItem, QCheckBox, QApplication, QLabel, QHBoxLayout, QWidget
 from PySide6.QtCore import Qt, Signal, QTimer
 
 from qt_ui.preferences_dialog_ui import Ui_PreferencesDialog
@@ -56,6 +57,12 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
 
         # patterns setup - do this immediately during initialization
         self.setup_patterns_tab()
+
+        # icon theme setup
+        self.setup_icon_theme_selector()
+        
+        # dark mode setup
+        self.setup_dark_mode_toggle()
 
         # media sync reset buttons
         self.mpc_reload.clicked.connect(
@@ -178,6 +185,17 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
         # display settings
         self.display_fps.setValue(int(qt_ui.settings.display_fps.get()))
         self.display_latency_ms.setValue(qt_ui.settings.display_latency.get())
+        
+        # icon theme
+        if hasattr(self, 'icon_theme_combobox'):
+            current_theme = qt_ui.settings.icon_theme.get()
+            index = self.icon_theme_combobox.findText(current_theme)
+            if index >= 0:
+                self.icon_theme_combobox.setCurrentIndex(index)
+        
+        # dark mode
+        if hasattr(self, 'dark_mode_checkbox'):
+            self.dark_mode_checkbox.setChecked(qt_ui.settings.dark_mode_enabled.get())
 
         # funscript mapping
         self.tableView.setModel(FunscriptKitModel.load_from_settings())
@@ -355,6 +373,14 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
         # display
         qt_ui.settings.display_fps.set(self.display_fps.value())
         qt_ui.settings.display_latency.set(self.display_latency_ms.value())
+        
+        # icon theme
+        if hasattr(self, 'icon_theme_combobox'):
+            qt_ui.settings.icon_theme.set(self.icon_theme_combobox.currentText())
+        
+        # dark mode
+        if hasattr(self, 'dark_mode_checkbox'):
+            qt_ui.settings.dark_mode_enabled.set(self.dark_mode_checkbox.isChecked())
 
         # funscript mapping
         self.tableView.model().save_to_settings()
@@ -381,6 +407,58 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
     def funscript_reset_defaults(self):
         self.tableView.model().reset_to_defaults()
     
+    def setup_icon_theme_selector(self):
+        """Setup icon theme selector in display tab"""
+        # Create a container widget if not already in the UI
+        if not hasattr(self, 'icon_theme_label'):
+            # Get the display settings group box
+            display_group = self.groupBox_5
+            
+            # Create label and combobox
+            self.icon_theme_label = QLabel("Icon Theme:")
+            self.icon_theme_combobox = QComboBox()
+            
+            # Populate with available icons from resources/icons/
+            icons_dir = os.path.join(os.getcwd(), 'resources', 'icons')
+            if os.path.exists(icons_dir):
+                icon_files = [f[:-4] for f in os.listdir(icons_dir) if f.endswith('.png')]
+                self.icon_theme_combobox.addItems(sorted(icon_files))
+            
+            # Add to the display settings layout
+            layout = display_group.layout()
+            if layout:
+                row_count = layout.rowCount() if hasattr(layout, 'rowCount') else 0
+                if hasattr(layout, 'addRow'):
+                    layout.addRow(self.icon_theme_label, self.icon_theme_combobox)
+                else:
+                    layout.addWidget(self.icon_theme_label)
+                    layout.addWidget(self.icon_theme_combobox)
+    
+    def setup_dark_mode_toggle(self):
+        """Setup dark mode toggle in display tab"""
+        if not hasattr(self, 'dark_mode_checkbox'):
+            # Get the display settings group box
+            display_group = self.groupBox_5
+            
+            # Create label and checkbox
+            self.dark_mode_label = QLabel("Dark Mode:")
+            self.dark_mode_checkbox = QCheckBox("Enable Dark Mode")
+            
+            # Create note label
+            self.dark_mode_note = QLabel("Note: Theme change requires restart")
+            self.dark_mode_note.setStyleSheet("color: #888888; font-size: 10px; font-style: italic;")
+            
+            # Add to the display settings layout
+            layout = display_group.layout()
+            if layout:
+                if hasattr(layout, 'addRow'):
+                    layout.addRow(self.dark_mode_label, self.dark_mode_checkbox)
+                    layout.addRow("", self.dark_mode_note)
+                else:
+                    layout.addWidget(self.dark_mode_label)
+                    layout.addWidget(self.dark_mode_checkbox)
+                    layout.addWidget(self.dark_mode_note)
+
     def setup_patterns_tab(self):
         """Setup the patterns tab with cached pattern data"""
         # Use cached patterns data to avoid late discovery

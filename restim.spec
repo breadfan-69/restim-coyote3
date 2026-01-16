@@ -1,21 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-added_files = [
-    ('resources/phase diagram bg.svg', 'resources/'),
-    ('resources/favicon.png', 'resources/')
-]
 
 a = Analysis(
     ['restim.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
-    datas=added_files,
+    datas=[('resources/phase diagram bg.svg', 'resources/'), ('resources/favicon.png', 'resources/')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
+    optimize=0,
 )
 pyz = PYZ(a.pure)
 
@@ -39,14 +36,4 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['resources\\favicon.ico'],
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='restim',
 )

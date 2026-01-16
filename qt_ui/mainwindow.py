@@ -70,6 +70,9 @@ class Window(QMainWindow, Ui_MainWindow):
         icon.addPixmap(QtGui.QPixmap(resources.favicon), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.setWindowIcon(icon)
 
+        # Load icon theme from settings
+        self._load_icon_theme()
+
         # TODO: credit https://glyphs.fyi/ for icons
         spacer = QWidget()
         spacer.sizePolicy()
@@ -521,6 +524,19 @@ class Window(QMainWindow, Ui_MainWindow):
         self.tab_volume.set_play_state(self.playstate)
         self.refresh_play_button_icon()
 
+    def _load_icon_theme(self):
+        """Load the icon theme from settings"""
+        icon_theme = qt_ui.settings.icon_theme.get()
+        icons_dir = os.path.join(os.getcwd(), 'resources', 'icons')
+        icon_path = os.path.join(icons_dir, f'{icon_theme}.png')
+        
+        if os.path.exists(icon_path):
+            icon = QtGui.QIcon()
+            icon.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+            self.setWindowIcon(icon)
+        else:
+            logger.warning(f"Icon theme '{icon_theme}' not found at {icon_path}, using default")
+
     def autostart_timeout(self):
         print('autostart timeout')
         if self.playstate == PlayState.WAITING_ON_LOAD:
@@ -597,6 +613,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.motion_3.refreshSettings()
         self.motion_4.refreshSettings()
         self.refresh_pattern_combobox()
+        self._load_icon_theme()  # reload icon if theme changed
 
     def refresh_pattern_combobox(self):
         config = DeviceConfiguration.from_settings()
