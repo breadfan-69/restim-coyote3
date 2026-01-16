@@ -94,10 +94,9 @@ class CoyoteDevice(OutputDevice, QObject):
                         self.connection_stage = ConnectionStage.CONNECTING
                     else:
                         attempt_counter += 1
-                        # Exponential backoff: 2s, 4s, 8s, max 15s
-                        retry_delay = min(2 ** (attempt_counter - 1) * 2, 15)
-                        logger.info(f"{LOG_PREFIX} Device not found (attempt {attempt_counter}); retrying in {retry_delay}s...")
-                        await asyncio.sleep(retry_delay)
+                        # Retry quickly without delay
+                        logger.info(f"{LOG_PREFIX} Device not found (attempt {attempt_counter}); retrying...")
+                        # No wait - retry immediately
                         
                 elif self.connection_stage == ConnectionStage.CONNECTING:
                     try:
@@ -301,61 +300,34 @@ class CoyoteDevice(OutputDevice, QObject):
             return False
 
     async def _scan_for_device(self):
-        """Scan for Coyote device with aggressive retry and adapter refresh"""
+        """Scan for Coyote device"""
         try:
             logger.info(f"{LOG_PREFIX} Scanning for device: {self.device_name}")
             
-            # First attempt: Quick scan with standard timeout
-            device = await BleakScanner.find_device_by_name(self.device_name, timeout=5.0)
-            if device:
-                logger.info(f"{LOG_PREFIX} Found device: {device.name} ({device.address})")
-                self.client = BleakClient(device)
-                self.connection_stage = ConnectionStage.CONNECTING
-                return True
-            
-            # Device not found in first scan - may need adapter refresh
-            logger.info(f"{LOG_PREFIX} First scan failed, refreshing adapter state...")
-            
-            # Second attempt: Scan all devices to refresh adapter (15 second scan)
+            # Try discover() first (most reliable on Windows)
             try:
-                devices = await BleakScanner.discover(timeout=15.0)
-                if devices:
-                    logger.info(f"{LOG_PREFIX} Found {len(devices)} BLE device(s) during refresh scan:")
-                    for dev in devices:
-                        logger.info(f"{LOG_PREFIX}   - {dev.name or 'Unknown'} ({dev.address})")
-                        if dev.name == self.device_name:
-                            logger.info(f"{LOG_PREFIX} Coyote found during refresh scan!")
-                            self.client = BleakClient(dev)
-                            self.connection_stage = ConnectionStage.CONNECTING
-                            return True
-                else:
-                    logger.info(f"{LOG_PREFIX} No BLE devices found during refresh scan. Bluetooth adapter may be disabled or not ready.")
-            except Exception as scan_err:
-                logger.error(f"{LOG_PREFIX} Error during refresh scan: {scan_err}")
-            
-            # Third attempt: Final scan with very long timeout
-            logger.info(f"{LOG_PREFIX} Final scan attempt with extended timeout...")
-            device = await BleakScanner.find_device_by_name(self.device_name, timeout=20.0)
-            if device:
-                logger.info(f"{LOG_PREFIX} Found device on final attempt: {device.name} ({device.address})")
-                self.client = BleakClient(device)
-                self.connection_stage = ConnectionStage.CONNECTING
-                return True
-            
-            # Fourth attempt: One more discovery scan with different settings
-            logger.info(f"{LOG_PREFIX} Fourth scan attempt using discover()...")
-            try:
-                devices = await BleakScanner.discover(timeout=10.0)
+                devices = await BleakScanner.discover(timeout=5.0)
                 for dev in devices:
                     if dev.name == self.device_name:
-                        logger.info(f"{LOG_PREFIX} Coyote found on fourth attempt!")
+                        logger.info(f"{LOG_PREFIX} Device found: {dev.name} ({dev.address})")
                         self.client = BleakClient(dev)
                         self.connection_stage = ConnectionStage.CONNECTING
                         return True
             except Exception as e:
-                logger.error(f"{LOG_PREFIX} Error on fourth scan: {e}")
+                logger.debug(f"{LOG_PREFIX} Discover scan error: {e}")
             
-            logger.warning(f"{LOG_PREFIX} Device {self.device_name} not found after all scan attempts. User may need to toggle Bluetooth or check device power.")
+            # Try name-based search
+            try:
+                device = await BleakScanner.find_device_by_name(self.device_name, timeout=5.0)
+                if device:
+                    logger.info(f"{LOG_PREFIX} Device found: {device.name} ({device.address})")
+                    self.client = BleakClient(device)
+                    self.connection_stage = ConnectionStage.CONNECTING
+                    return True
+            except Exception as e:
+                logger.debug(f"{LOG_PREFIX} Name search error: {e}")
+            
+            logger.warning(f"{LOG_PREFIX} Device {self.device_name} not found. Check device is powered on and Bluetooth may need to be toggled.")
             return False
             
         except Exception as e:
