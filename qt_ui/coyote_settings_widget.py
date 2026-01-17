@@ -3,7 +3,7 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import Dict, Optional
-from PySide6 import QtWidgets
+from PySide6 import QtWidgets, QtCore
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout,
                             QGraphicsView, QGraphicsScene, QGraphicsLineItem, QSpinBox,
                             QGraphicsRectItem, QToolTip, QGraphicsEllipseItem)
@@ -125,6 +125,11 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
         for control in self.channel_controls.values():
             control.set_pulse_frequency_enabled(not enabled)
 
+    def cleanup(self):
+        """Clean up resources when switching away from Coyote device"""
+        for control in self.channel_controls.values():
+            control.cleanup()
+
     def get_pulse_frequency_controller(self, channel_id: str) -> Optional[AxisController]:
         """Get the pulse_frequency axis controller for a specific channel"""
         control = self.channel_controls.get(channel_id.upper())
@@ -176,7 +181,7 @@ class ChannelControl:
 
         freq_min_layout = QHBoxLayout()
         self.freq_min = QSpinBox()
-        self.freq_min.setRange(10, 500)
+        self.freq_min.setRange(10, 200)
         self.freq_min.setSingleStep(10)
         self.freq_min.setValue(self.config.freq_min_setting.get())
         self.freq_min.valueChanged.connect(self.on_freq_min_changed)
@@ -186,7 +191,7 @@ class ChannelControl:
 
         freq_max_layout = QHBoxLayout()
         self.freq_max = QSpinBox()
-        self.freq_max.setRange(10, 500)
+        self.freq_max.setRange(10, 200)
         self.freq_max.setSingleStep(10)
         self.freq_max.setValue(self.config.freq_max_setting.get())
         self.freq_max.valueChanged.connect(self.on_freq_max_changed)
@@ -206,17 +211,59 @@ class ChannelControl:
 
         pulse_freq_layout = QHBoxLayout()
         self.pulse_frequency = QSpinBox()
-        self.pulse_frequency.setRange(0, 100)
+        self.pulse_frequency.setRange(0, 200)
         self.pulse_frequency.setSingleStep(1)
         self.pulse_frequency.setValue(50)
         pulse_freq_layout.addWidget(QLabel("Pulse Freq (Hz)"))
         pulse_freq_layout.addWidget(self.pulse_frequency)
         left.addLayout(pulse_freq_layout)
         
-        # Create axis controller for this channel's pulse_frequency
-        self.pulse_frequency_controller = AxisController(self.pulse_frequency)
-        # Initialize with a constant axis based on the spinbox's current value
-        self.pulse_frequency_controller.link_to_internal_axis(create_constant_axis(self.pulse_frequency.value()))
+        # Create constant axis for this channel's pulse_frequency - no interpolation, direct value updates
+        self._pulse_frequency_axis = create_constant_axis(self.pulse_frequency.value())
+        # Connect spinbox changes directly to update axis value (no AxisController, no interpolation)
+        self.pulse_frequency.valueChanged.connect(self._update_pulse_frequency_axis)
+        
+        # Create a simple wrapper that mimics AxisController for spinbox sync with funscript
+        class SimpleAxisWrapper(QtCore.QObject):
+            def __init__(self, spinbox, axis):
+                super().__init__()
+                self.axis = axis
+                self.spinbox = spinbox
+                self.script_axis = None
+                self.internal_axis = axis
+                
+                # Timer to sync spinbox with script_axis (like AxisController does)
+                self.timer = QTimer()
+                self.timer.setInterval(16)  # ~60Hz update rate
+                self.timer.timeout.connect(self.timeout)
+            
+            def timeout(self):
+                """Update spinbox from script_axis value"""
+                if self.script_axis:
+                    import time
+                    current_value = int(self.script_axis.interpolate(time.time()))
+                    if self.spinbox.value() != current_value:
+                        self.spinbox.blockSignals(True)
+                        self.spinbox.setValue(current_value)
+                        self.spinbox.blockSignals(False)
+            
+            def link_axis(self, new_axis):
+                """Link to a new axis (e.g., from funscript during media sync)"""
+                from stim_math.axis import WriteProtectedAxis
+                if isinstance(new_axis, WriteProtectedAxis):
+                    # Funscript axis - enable auto-update
+                    self.script_axis = new_axis
+                    self.spinbox.setEnabled(False)
+                    self.timer.start()
+                else:
+                    # Internal axis - disable auto-update
+                    self.script_axis = None
+                    self.spinbox.setEnabled(True)
+                    self.timer.stop()
+                    self.internal_axis = new_axis
+                self.axis = new_axis
+        
+        self.pulse_frequency_controller = SimpleAxisWrapper(self.pulse_frequency, self._pulse_frequency_axis)
 
         layout.addLayout(left)
 
@@ -226,10 +273,10 @@ class ChannelControl:
         graph_column = QVBoxLayout()
         graph_column.addWidget(self.pulse_graph)
 
-        self.stats_label = QLabel("Intensity: 0%\nFrequency: 0 Hz")
+        self.stats_label = QLabel("")
         self.stats_label.setAlignment(Qt.AlignHCenter)
         self.pulse_graph.attach_stats_label(self.stats_label)
-        graph_column.addWidget(self.stats_label)
+        # Don't add stats_label to graph_column - it's hidden now
 
         layout.addLayout(graph_column)
 
@@ -289,7 +336,17 @@ class ChannelControl:
         """Enable or disable the pulse frequency spinbox"""
         if self.pulse_frequency:
             self.pulse_frequency.setEnabled(enabled)
-        self.update_volume_label(value)
+
+    def cleanup(self):
+        """Clean up resources when switching devices"""
+        if self.pulse_frequency_controller and hasattr(self.pulse_frequency_controller, 'timer'):
+            self.pulse_frequency_controller.timer.stop()
+            self.pulse_frequency_controller.timer.deleteLater()
+
+    def _update_pulse_frequency_axis(self, value: int):
+        """Update pulse frequency axis directly when spinbox value changes (no interpolation)"""
+        if self._pulse_frequency_axis:
+            self._pulse_frequency_axis.value = value
 
     def on_strength_max_changed(self, value: int):
         self.config.strength_max_setting.set(value)
@@ -371,7 +428,7 @@ class PulseGraphContainer(QWidget):
 
     def attach_stats_label(self, label: QLabel):
         self.stats_label = label
-        self.stats_label.setText("Intensity: 0%\nFrequency: 0 Hz")
+        self.stats_label.setText("Intensity: 0%")
         
     def get_frequency_range_text(self, entries) -> str:
         """Get the frequency range text from the given entries."""
@@ -412,18 +469,13 @@ class PulseGraphContainer(QWidget):
         # Clean up old entries
         self.clean_old_entries()
         
-        # Calculate stats using pulses from the time window
+        # Get intensity range from recent entries
         recent_entries = self.entries
-        
-        # Get frequency range text
-        freq_text = self.get_frequency_range_text(recent_entries)
-        
-        # Get intensity range
         intensities = [entry.intensity for entry in recent_entries]
         intensity_text = self.format_intensity_text(intensities)
 
         if self.stats_label:
-            self.stats_label.setText(f"Intensity: {intensity_text}\nFrequency: {freq_text}")
+            self.stats_label.setText(f"Intensity: {intensity_text}")
 
     def add_pulse(self, frequency, intensity, duration, current_strength, channel_limit):
         # Calculate effective intensity after applying current strength
@@ -498,7 +550,7 @@ class PulseGraph(QWidget):
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.refresh)
-        self.timer.start(50)
+        self.timer.start(16)  # ~60Hz refresh rate for responsive visualization
         
         # Colors for visualization
         self.pulse_color = QColor(0, 255, 0, 200)  # Semi-transparent lime
@@ -712,7 +764,6 @@ class PulseGraph(QWidget):
                         x_start, height - 2,  # Just a thin line at the bottom
                         rect_width, 2
                     )
-                    empty_rect.setPen(QPen(QColor(100, 100, 100, 100), 1))  # Very light gray
                     empty_rect.setBrush(QBrush(QColor(100, 100, 100, 50)))  # Almost transparent
                     self.scene.addItem(empty_rect)
                 else:
@@ -723,7 +774,6 @@ class PulseGraph(QWidget):
                         pulse                           # pass pulse data for tooltip
                     )
                     
-                    rect.setPen(QPen(self.pulse_border_color, 1))
                     rect.setBrush(QBrush(pulse_color))
                     
                     # Add rectangle to scene

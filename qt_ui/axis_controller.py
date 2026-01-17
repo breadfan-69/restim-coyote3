@@ -11,7 +11,7 @@ class AxisController(QtCore.QObject):
         super(AxisController, self).__init__()
         self.control = control
         self.timer = QtCore.QTimer()
-        self.timer.setInterval(100)
+        self.timer.setInterval(16)  # ~60Hz update rate for responsive UI
         self.script_axis: AbstractAxis = None
         self.internal_axis: AbstractAxis = None
         self.timer.timeout.connect(self.timeout)

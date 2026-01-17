@@ -48,7 +48,7 @@ class Ui_WizardPageCoyote(object):
 
     def retranslateUi(self, WizardPageCoyote):
         WizardPageCoyote.setWindowTitle(QCoreApplication.translate("WizardPageCoyote", u"WizardPage", None))
-        self.three_phase_radio.setText(QCoreApplication.translate("WizardPageCoyote", u"Three-phase", None))
+        self.three_phase_radio.setText(QCoreApplication.translate("WizardPageCoyote", u"Simulated Three-Phase", None))
         self.label.setText(QCoreApplication.translate("WizardPageCoyote", u"<html><head/><body>\n"
 "      <p>A = left<br/>B = right<br/>C = neutral</p>\n"
 "      <p>Connect A- and B- to a shared common electrode (e.g. a conductive rubber loop).</p>\n"

@@ -309,7 +309,7 @@ class Ui_MainWindow(object):
         self.comboBox_patternSelect.setItemText(3, QCoreApplication.translate("MainWindow", u"B", None))
         self.comboBox_patternSelect.setItemText(4, QCoreApplication.translate("MainWindow", u"C", None))
 
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_threephase), QCoreApplication.translate("MainWindow", u"3-phase", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_threephase), QCoreApplication.translate("MainWindow", u"Calibration", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_fourphase), QCoreApplication.translate("MainWindow", u"4-phase", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_carrier), QCoreApplication.translate("MainWindow", u"Carrier settings", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_coyote), QCoreApplication.translate("MainWindow", u"Coyote", None))

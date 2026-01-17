@@ -143,11 +143,9 @@ class CoyoteAlgorithm:
         duration_a_ms = duration_map.get("A", 0)
         duration_b_ms = duration_map.get("B", 0)
 
-        durations = [duration for duration in duration_map.values() if duration > 0]
-        if not durations:
-            durations = [1]
-        min_duration_ms = max(1, min(durations))
-        self.next_update_time = current_time + (min_duration_ms / 1000.0) * self.tuning.packet_margin
+        # DGLabs V3 protocol: Send B0 commands every 100ms (10 packets/sec)
+        # Each packet contains 4 pulse groups per channel covering 100ms of data
+        self.next_update_time = current_time + 0.1  # Always 100ms interval
 
         self._log_packet(current_time, pulses_a, pulses_b, duration_a_ms, duration_b_ms)
 
@@ -177,8 +175,8 @@ class CoyoteAlgorithm:
             channel.generator.advance_phase(texture_speed, delta_s)
 
     def _schedule_from_remaining(self, current_time: float) -> None:
-        remaining = min(channel.state.remaining_ms() for channel in self._channels)
-        self.next_update_time = current_time + (remaining / 1000.0) * self.tuning.packet_margin
+        # Even when no new pulses are needed, maintain 100ms packet interval per DGLabs V3 spec
+        self.next_update_time = current_time + 0.1  # 100ms interval
 
     def _positional_intensity(self, time_s: float, volume: float) -> Tuple[int, int]:
         alpha, beta = self.position.get_position(time_s)

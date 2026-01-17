@@ -359,7 +359,7 @@ class AlgorithmFactory:
         funscript_freq = self.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY)
         if funscript_freq:
             return funscript_freq
-        # Use channel A spinbox controller's axis
+        # Use channel A spinbox controller's axis (always available, no interpolation)
         return self.mainwindow.tab_coyote.get_channel_a_pulse_frequency_controller().axis
 
     def get_axis_coyote_channel_b_pulse_frequency(self):
@@ -367,7 +367,7 @@ class AlgorithmFactory:
         funscript_freq = self.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY)
         if funscript_freq:
             return funscript_freq
-        # Use channel B spinbox controller's axis
+        # Use channel B spinbox controller's axis (always available, no interpolation)
         return self.mainwindow.tab_coyote.get_channel_b_pulse_frequency_controller().axis
 
     def get_axis_vib1_all(self):
