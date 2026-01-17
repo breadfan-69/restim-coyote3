@@ -15,6 +15,7 @@ import restim_rc
 
 from net.media_source.interface import MediaConnectionState
 from qt_ui.algorithm_factory import AlgorithmFactory
+from qt_ui.device_wizard.axes import AxisEnum
 from qt_ui.audio_write_dialog import AudioWriteDialog
 from qt_ui.main_window_ui import Ui_MainWindow
 import qt_ui.patterns.threephase_patterns
@@ -331,6 +332,19 @@ class Window(QMainWindow, Ui_MainWindow):
         self.tab_pulse_settings.pulse_interval_random_controller.link_axis(algorithm_factory.get_axis_pulse_interval_random())
         self.tab_pulse_settings.pulse_rise_time_controller.link_axis(algorithm_factory.get_axis_pulse_rise_time())
 
+        # coyote tab - disable pulse_frequency spinboxes if funscript is controlling them
+        has_pulse_frequency_funscript = algorithm_factory.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY) is not None
+        self.tab_coyote.set_pulse_frequency_from_funscript(has_pulse_frequency_funscript)
+        
+        # Link per-channel pulse_frequency controllers
+        coyote_ch_a_freq_controller = self.tab_coyote.get_channel_a_pulse_frequency_controller()
+        if coyote_ch_a_freq_controller:
+            coyote_ch_a_freq_controller.link_axis(algorithm_factory.get_axis_coyote_channel_a_pulse_frequency())
+        
+        coyote_ch_b_freq_controller = self.tab_coyote.get_channel_b_pulse_frequency_controller()
+        if coyote_ch_b_freq_controller:
+            coyote_ch_b_freq_controller.link_axis(algorithm_factory.get_axis_coyote_channel_b_pulse_frequency())
+
         # vibration tab
         self.tab_vibrate.vib1_enabled_controller.link_axis(algorithm_factory.get_axis_vib1_enabled())
         self.tab_vibrate.vib1_freq_controller.link_axis(algorithm_factory.get_axis_vib1_frequency())
@@ -393,7 +407,7 @@ class Window(QMainWindow, Ui_MainWindow):
             visible |= {self.tab_neostim}
             visible -= {self.tab_vibrate, self.tab_details}
         if config.device_type == DeviceType.COYOTE_THREE_PHASE:
-            visible |= {self.tab_coyote, self.tab_pulse_settings}
+            visible |= {self.tab_coyote}
             visible -= {self.tab_vibrate}
 
         for tab in all_tabs:

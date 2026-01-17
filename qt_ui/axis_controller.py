@@ -59,6 +59,13 @@ class AxisController(QtCore.QObject):
         self.set_control_value(self.internal_axis.interpolate(time.time()))
         self.control.setEnabled(True)
 
+    @property
+    def axis(self) -> AbstractAxis:
+        """Get the active axis (script_axis if available, otherwise internal_axis)"""
+        if self.script_axis:
+            return self.script_axis
+        return self.internal_axis
+
     modified_by_user = QtCore.Signal()
 
 

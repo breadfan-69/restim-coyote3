@@ -278,13 +278,15 @@ class AlgorithmFactory:
                     minimum_frequency=settings.coyote_channel_a_freq_min,
                     maximum_frequency=settings.coyote_channel_a_freq_max,
                     maximum_strength=settings.coyote_channel_a_strength_max,
-                    vibration=self.get_axis_vib1_all()
+                    vibration=self.get_axis_vib1_all(),
+                    pulse_frequency=self.get_axis_coyote_channel_a_pulse_frequency()
                 ),
                 channel_b=CoyoteChannelParams(
                     minimum_frequency=settings.coyote_channel_b_freq_min,
                     maximum_frequency=settings.coyote_channel_b_freq_max,
                     maximum_strength=settings.coyote_channel_b_strength_max,
-                    vibration=self.get_axis_vib2_all()
+                    vibration=self.get_axis_vib2_all(),
+                    pulse_frequency=self.get_axis_coyote_channel_b_pulse_frequency()
                 )
             ),
             safety_limits=SafetyParams(
@@ -351,6 +353,22 @@ class AlgorithmFactory:
     def get_axis_pulse_rise_time(self):
         return self.get_axis_from_script_mapping(AxisEnum.PULSE_RISE_TIME) or \
             self.mainwindow.tab_pulse_settings.axis_pulse_rise_time
+
+    def get_axis_coyote_channel_a_pulse_frequency(self):
+        # For Coyote, use funscript if available, otherwise use channel A spinbox
+        funscript_freq = self.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY)
+        if funscript_freq:
+            return funscript_freq
+        # Use channel A spinbox controller's axis
+        return self.mainwindow.tab_coyote.get_channel_a_pulse_frequency_controller().axis
+
+    def get_axis_coyote_channel_b_pulse_frequency(self):
+        # For Coyote, use funscript if available, otherwise use channel B spinbox
+        funscript_freq = self.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY)
+        if funscript_freq:
+            return funscript_freq
+        # Use channel B spinbox controller's axis
+        return self.mainwindow.tab_coyote.get_channel_b_pulse_frequency_controller().axis
 
     def get_axis_vib1_all(self):
         return VibrationParams(

@@ -179,6 +179,7 @@ class CoyoteChannelParams:
     maximum_frequency: settings.Setting
     maximum_strength: settings.Setting 
     vibration: VibrationParams # TODO: modulate channel A/B freq
+    pulse_frequency: AbstractAxis = None  # Optional per-channel pulse frequency (if None, uses global)
 
 @dataclass
 class CoyoteAlgorithmParams:

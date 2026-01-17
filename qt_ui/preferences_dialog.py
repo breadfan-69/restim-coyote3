@@ -428,9 +428,11 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
             try:
                 if os.path.exists(icons_dir):
                     icon_files = sorted([f[:-4] for f in os.listdir(icons_dir) if f.endswith('.png')])
-                    # Sort in desired order: cherries first, then banana, walnut, coyote
-                    desired_order = ['cherries', 'banana', 'walnut', 'coyote', 'favicon']
+                    # Sort in desired order: cherries first, then banana, walnut, coyote (favicon excluded - internal use only)
+                    desired_order = ['cherries', 'banana', 'walnut', 'coyote']
                     icon_files = [f for f in desired_order if f in icon_files] + [f for f in icon_files if f not in desired_order]
+                    # Filter out favicon from the selector
+                    icon_files = [f for f in icon_files if f != 'favicon']
                     for icon_name in icon_files:
                         icon_path = os.path.join(icons_dir, f'{icon_name}.png')
                         if os.path.exists(icon_path):

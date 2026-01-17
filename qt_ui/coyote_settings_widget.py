@@ -11,6 +11,8 @@ from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QPen, QColor, QBrush, QPainterPath
 from device.coyote.device import CoyoteDevice, CoyotePulse, CoyotePulses, CoyoteStrengths
 from qt_ui import settings
+from qt_ui.axis_controller import AxisController
+from stim_math.axis import create_constant_axis
 
 class CoyoteSettingsWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -118,6 +120,24 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
         new_level = logging.DEBUG if enabled else logging.INFO
         self.coyote_logger.setLevel(new_level)
 
+    def set_pulse_frequency_from_funscript(self, enabled: bool):
+        """Enable/disable pulse_frequency spinboxes based on funscript availability"""
+        for control in self.channel_controls.values():
+            control.set_pulse_frequency_enabled(not enabled)
+
+    def get_pulse_frequency_controller(self, channel_id: str) -> Optional[AxisController]:
+        """Get the pulse_frequency axis controller for a specific channel"""
+        control = self.channel_controls.get(channel_id.upper())
+        return control.pulse_frequency_controller if control else None
+
+    def get_channel_a_pulse_frequency_controller(self) -> Optional[AxisController]:
+        """Get the pulse_frequency axis controller for channel A"""
+        return self.get_pulse_frequency_controller('A')
+
+    def get_channel_b_pulse_frequency_controller(self) -> Optional[AxisController]:
+        """Get the pulse_frequency axis controller for channel B"""
+        return self.get_pulse_frequency_controller('B')
+
 @dataclass(frozen=True)
 class ChannelConfig:
     channel_id: str
@@ -132,6 +152,8 @@ class ChannelControl:
 
         self.freq_min: Optional[QSpinBox] = None
         self.freq_max: Optional[QSpinBox] = None
+        self.pulse_frequency: Optional[QSpinBox] = None
+        self.pulse_frequency_controller: Optional[AxisController] = None
         self.strength_max: Optional[QSpinBox] = None
         self.volume_slider: Optional[QSlider] = None
         self.volume_label: Optional[QLabel] = None
@@ -181,6 +203,20 @@ class ChannelControl:
         self.strength_max.valueChanged.connect(self.on_strength_max_changed)
         strength_layout.addWidget(self.strength_max)
         left.addLayout(strength_layout)
+
+        pulse_freq_layout = QHBoxLayout()
+        self.pulse_frequency = QSpinBox()
+        self.pulse_frequency.setRange(0, 100)
+        self.pulse_frequency.setSingleStep(1)
+        self.pulse_frequency.setValue(50)
+        pulse_freq_layout.addWidget(QLabel("Pulse Freq (Hz)"))
+        pulse_freq_layout.addWidget(self.pulse_frequency)
+        left.addLayout(pulse_freq_layout)
+        
+        # Create axis controller for this channel's pulse_frequency
+        self.pulse_frequency_controller = AxisController(self.pulse_frequency)
+        # Initialize with a constant axis based on the spinbox's current value
+        self.pulse_frequency_controller.link_to_internal_axis(create_constant_axis(self.pulse_frequency.value()))
 
         layout.addLayout(left)
 
@@ -248,6 +284,11 @@ class ChannelControl:
         self.volume_slider.blockSignals(True)
         self.volume_slider.setValue(value)
         self.volume_slider.blockSignals(False)
+
+    def set_pulse_frequency_enabled(self, enabled: bool):
+        """Enable or disable the pulse frequency spinbox"""
+        if self.pulse_frequency:
+            self.pulse_frequency.setEnabled(enabled)
         self.update_volume_label(value)
 
     def on_strength_max_changed(self, value: int):
@@ -465,6 +506,10 @@ class PulseGraph(QWidget):
         
         # Time scaling factor - how many pixels per ms of duration
         self.time_scale_factor = 0.5  # pixels per ms
+        
+        # Frequency range for color gradient mapping
+        self.freq_min = 10  # Hz - default low frequency
+        self.freq_max = 200  # Hz - default high frequency
     
     def resizeEvent(self, event):
         """Handle resize events by updating the scene rectangle"""
@@ -484,6 +529,42 @@ class PulseGraph(QWidget):
         """Generate a fingerprint for a pulse to detect duplicates"""
         return f"{pulse.frequency}_{pulse.intensity}_{pulse.duration}"
     
+    def get_color_for_frequency(self, frequency: float) -> QColor:
+        """
+        Calculate color based on frequency using green→yellow→red→purple gradient.
+        10 Hz (green) → 30 Hz (green) → 70 Hz (yellow) → 100 Hz (red) → 200 Hz (purple)
+        """
+        # Normalize frequency to 0-1 range
+        freq_range = self.freq_max - self.freq_min
+        if freq_range <= 0:
+            normalized = 0.5
+        else:
+            normalized = (frequency - self.freq_min) / freq_range
+            normalized = max(0, min(1, normalized))  # Clamp to 0-1
+        
+        # Calculate normalized frequencies for key points
+        # 30 Hz = (30-10)/(200-10) ≈ 0.105
+        # 70 Hz = (70-10)/(200-10) ≈ 0.316
+        # 100 Hz = (100-10)/(200-10) ≈ 0.474
+        
+        if normalized <= 0.105:  # 10-30 Hz: Pure green
+            r = 0
+            g = 255
+            b = 0
+        elif normalized <= 0.316:  # 30-70 Hz: Fast green to yellow
+            t = (normalized - 0.105) / (0.316 - 0.105)  # 0 to 1 over this range
+            r = int(255 * t)
+            g = 255
+            b = 0
+        else:  # 70-200 Hz: Yellow/Red to Purple
+            t = (normalized - 0.316) / (1.0 - 0.316)  # 0 to 1 over this range
+            r = 255
+            g = int(255 * max(0, 1 - t * 1.3))  # Green decreases faster to 0
+            b = int(150 * t)  # Blue increases from 0 to 150 (more purple)
+        
+        # Return with semi-transparency
+        return QColor(r, g, b, 200)
+    
     def clean_old_pulses(self):
         """Remove pulses outside the time window"""
         current_time = time.time()
@@ -500,27 +581,13 @@ class PulseGraph(QWidget):
         # Don't skip zero intensity pulses, but display them differently
         self.channel_limit = channel_limit
         
-        # Generate a fingerprint for this pulse
-        fingerprint = self.get_pulse_fingerprint(pulse)
+        # Update frequency range based on actual pulses (keep min adaptive, keep max fixed at 200)
+        if pulse.frequency > 0:
+            self.freq_min = min(self.freq_min, pulse.frequency)
+            # Don't update freq_max - keep it fixed at 200 Hz for consistent red mapping
         
-        # Check if this pulse is from a new packet
+        # Show every pulse - no deduplication
         current_time = time.time()
-        is_new_packet = len(self.pulses) % 4 == 0 or current_time - self.last_packet_time > 0.2
-        
-        # If we've seen this exact pulse recently and it's not a new packet, skip it
-        if fingerprint in self.pulse_fingerprints and not is_new_packet:
-            # Only add if it's been more than 1 second since we last saw this pulse
-            last_seen_time = self.pulse_fingerprints[fingerprint]
-            if current_time - last_seen_time < 1.0:
-                return  # Skip this pulse, it's a duplicate
-        
-        # Update fingerprint timestamp
-        self.pulse_fingerprints[fingerprint] = current_time
-        
-        # If it's a new packet, increment the packet index
-        if is_new_packet:
-            self.current_packet_index += 1
-            self.last_packet_time = current_time
         
         # Store the CoyotePulse with additional metadata
         pulse_copy = CoyotePulse(
@@ -629,11 +696,14 @@ class PulseGraph(QWidget):
                 
                 x_start = 5 + (time_position_start * usable_width)
                 x_end = 5 + (time_position_end * usable_width)
-                rect_width = max(2, x_end - x_start)  # Ensure minimum width
+                rect_width = max(3, min(6, x_end - x_start))  # Keep bars narrow (3-6 pixels)
                 
                 # Calculate height based on intensity (always define rect_height)
                 height_ratio = pulse.applied_intensity / scale_max if scale_max > 0 else 0
                 rect_height = height * height_ratio
+                
+                # Get color based on frequency
+                pulse_color = self.get_color_for_frequency(pulse.frequency)
 
                 # For zero-intensity pulses, still show something to indicate timing
                 if pulse.applied_intensity <= 0:
@@ -654,7 +724,7 @@ class PulseGraph(QWidget):
                     )
                     
                     rect.setPen(QPen(self.pulse_border_color, 1))
-                    rect.setBrush(QBrush(packet_color))
+                    rect.setBrush(QBrush(pulse_color))
                     
                     # Add rectangle to scene
                     self.scene.addItem(rect)

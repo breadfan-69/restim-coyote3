@@ -86,12 +86,21 @@ class PulseGenerator:
         min_freq, max_freq = self._channel_frequency_window()
         duration_limits = self._duration_limits(min_freq, max_freq)
 
-        raw_frequency = float(self.params.pulse_frequency.interpolate(time_s))
+        # Use per-channel pulse frequency if available, otherwise use global
+        if self.channel_params.pulse_frequency is not None:
+            raw_frequency = float(self.channel_params.pulse_frequency.interpolate(time_s))
+        else:
+            raw_frequency = float(self.params.pulse_frequency.interpolate(time_s))
+        
         normalised = normalize(raw_frequency, self._pulse_freq_limits)
         mapped_frequency = min_freq + (max_freq - min_freq) * normalised
         if mapped_frequency <= 0:
             mapped_frequency = 1000.0 / duration_limits[1]
         base_duration = 1000.0 / mapped_frequency
+        
+        # Debug: Log frequency values to verify funscript data is being applied
+        if sequence_index % 100 == 0:  # Log every 100th pulse to avoid spam
+            logger.debug(f"[{self.name}] seq={sequence_index} raw_freq={raw_frequency:.1f}Hz normalised={normalised:.3f} mapped_freq={mapped_frequency:.1f}Hz duration={base_duration:.1f}ms")
 
         # No jitter or texture - use base duration directly
         desired_ms = base_duration
@@ -112,13 +121,13 @@ class PulseGenerator:
             frequency_limits=(min_freq, max_freq),
             base_duration_ms=base_duration,
             duration_limits=duration_limits,
-            jitter_fraction=jitter_fraction,
-            jitter_factor=jitter_factor,
-            width_normalised=width_normalised,
-            texture_mode=texture_info.mode,
-            texture_headroom_up_ms=texture_info.headroom_up_ms,
-            texture_headroom_down_ms=texture_info.headroom_down_ms,
-            texture_applied_ms=texture_info.offset_ms,
+            jitter_fraction=0.0,
+            jitter_factor=0.0,
+            width_normalised=0.0,
+            texture_mode='none',
+            texture_headroom_up_ms=0.0,
+            texture_headroom_down_ms=0.0,
+            texture_applied_ms=0.0,
             desired_duration_ms=desired_ms,
             residual_ms=residual,
         )
