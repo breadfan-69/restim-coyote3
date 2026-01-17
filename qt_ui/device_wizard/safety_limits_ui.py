@@ -54,7 +54,7 @@ class Ui_WizardPageSafetyLimits(object):
         self.max_frequency_spinbox.setDecimals(0)
         self.max_frequency_spinbox.setMinimum(1.000000000000000)
         self.max_frequency_spinbox.setMaximum(10000.000000000000000)
-        self.max_frequency_spinbox.setValue(1000.000000000000000)
+        self.max_frequency_spinbox.setValue(1500.000000000000000)
 
         self.formLayout.setWidget(1, QFormLayout.ItemRole.FieldRole, self.max_frequency_spinbox)
 
