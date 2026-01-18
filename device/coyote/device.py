@@ -110,12 +110,16 @@ class CoyoteDevice(OutputDevice, QObject):
                         await self.disconnect()
                         
                 elif self.connection_stage == ConnectionStage.SERVICE_DISCOVERY:
-                    services = self.client.services
-                    if services and len(services) > 0:
-                        logger.info(f"{LOG_PREFIX} Services discovered ({len(services)}), subscribing to status...")
-                        self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
-                    else:
-                        logger.error(f"{LOG_PREFIX} Service discovery failed")
+                    try:
+                        services = list(self.client.services)
+                        if len(services) > 0:
+                            logger.info(f"{LOG_PREFIX} Services discovered ({len(services)}), subscribing to status...")
+                            self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
+                        else:
+                            logger.error(f"{LOG_PREFIX} Service discovery failed")
+                            await self.disconnect()
+                    except Exception as e:
+                        logger.error(f"{LOG_PREFIX} Service discovery error: {e}")
                         await self.disconnect()
                         
                 elif self.connection_stage == ConnectionStage.STATUS_SUBSCRIBE:
