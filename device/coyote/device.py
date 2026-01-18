@@ -110,21 +110,13 @@ class CoyoteDevice(OutputDevice, QObject):
                         await self.disconnect()
                         
                 elif self.connection_stage == ConnectionStage.SERVICE_DISCOVERY:
-                    services = self.client.services.services
-                    if len(services) > 0:
-                        logger.info(f"{LOG_PREFIX} Services discovered ({len(services)}), subscribing to battery...")
-                        self.connection_stage = ConnectionStage.BATTERY_SUBSCRIBE
+                    services = self.client.services
+                    if services and len(services) > 0:
+                        logger.info(f"{LOG_PREFIX} Services discovered ({len(services)}), subscribing to status...")
+                        self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
                     else:
                         logger.error(f"{LOG_PREFIX} Service discovery failed")
                         await self.disconnect()
-                        
-                elif self.connection_stage == ConnectionStage.BATTERY_SUBSCRIBE:
-                    if await self._subscribe_to_notifications(BATTERY_CHAR_UUID):
-                        logger.info(f"{LOG_PREFIX} Battery subscribed, subscribing to status...")
-                        self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
-                    else:
-                        logger.warning(f"{LOG_PREFIX} Battery subscription failed, continuing anyway...")
-                        self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
                         
                 elif self.connection_stage == ConnectionStage.STATUS_SUBSCRIBE:
                     if await self._subscribe_to_notifications(NOTIFY_CHAR_UUID):
@@ -146,8 +138,9 @@ class CoyoteDevice(OutputDevice, QObject):
                         await self.disconnect()
                         
                 elif self.connection_stage == ConnectionStage.CONNECTED:
-                    # Just maintain the connection
-                    await asyncio.sleep(1)
+                    # Poll battery level periodically (every 10 seconds)
+                    await self._read_battery_level()
+                    await asyncio.sleep(10)
                     
                 # Emit signal when connection status changes
                 if prev_stage != self.connection_stage:
@@ -291,9 +284,7 @@ class CoyoteDevice(OutputDevice, QObject):
                 logger.error(f"{LOG_PREFIX} Characteristic {char_uuid} not found")
                 return False
             
-            await self.client.start_notify(char_uuid, 
-                self._handle_battery_notification if char_uuid == BATTERY_CHAR_UUID 
-                else self._handle_status_notification)
+            await self.client.start_notify(char_uuid, self._handle_status_notification)
             return True
         except Exception as e:
             logger.error(f"{LOG_PREFIX} Failed to subscribe to {char_uuid}: {e}")
