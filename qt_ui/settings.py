@@ -18,7 +18,12 @@ class Setting:
 
     def get(self):
         if self.cache is None:
-            self.cache = get_settings_instance().value(self.key, self.default_value, self.dtype)
+            settings = get_settings_instance()
+            value = settings.value(self.key, self.default_value, self.dtype)
+            # Ensure default is written if key doesn't exist
+            if not settings.contains(self.key):
+                settings.setValue(self.key, self.default_value)
+            self.cache = value
         return self.cache
 
     def set(self, value):
