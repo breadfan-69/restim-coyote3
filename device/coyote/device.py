@@ -113,7 +113,8 @@ class CoyoteDevice(OutputDevice, QObject):
                     try:
                         services = list(self.client.services)
                         if len(services) > 0:
-                            logger.info(f"{LOG_PREFIX} Services discovered ({len(services)}), subscribing to status...")
+                            logger.info(f"{LOG_PREFIX} Services discovered ({len(services)}), waiting for characteristics to load...")
+                            await asyncio.sleep(0.5)  # Wait for characteristics to fully load
                             self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
                         else:
                             logger.error(f"{LOG_PREFIX} Service discovery failed")
@@ -142,9 +143,16 @@ class CoyoteDevice(OutputDevice, QObject):
                         await self.disconnect()
                         
                 elif self.connection_stage == ConnectionStage.CONNECTED:
-                    # Poll battery level periodically (every 10 seconds)
-                    await self._read_battery_level()
-                    await asyncio.sleep(10)
+                    # Maintain connection and poll battery periodically
+                    current_time = time.time()
+                    if not hasattr(self, '_last_battery_poll'):
+                        self._last_battery_poll = current_time
+                    
+                    if current_time - self._last_battery_poll >= 10:
+                        await self._read_battery_level()
+                        self._last_battery_poll = current_time
+                    
+                    await asyncio.sleep(1)  # Check connection every second
                     
                 # Emit signal when connection status changes
                 if prev_stage != self.connection_stage:
@@ -273,12 +281,24 @@ class CoyoteDevice(OutputDevice, QObject):
             self.parameters.channel_b_intensity_balance
         ])
         
-        try:
-            await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
-            return True
-        except Exception as e:
-            logger.error(f"{LOG_PREFIX} Failed to sync parameters: {e}")
-            return False
+        # Send parameters with retry logic for characteristic not found
+        max_retries = 3
+        retry_delay = 0.05  # 50ms between retries
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
+                return True  # Success
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+        
+        # All retries exhausted
+        logger.error(f"{LOG_PREFIX} Failed to sync parameters after {max_retries} retries: {last_error}")
+        return False
 
     async def _subscribe_to_notifications(self, char_uuid: str) -> bool:
         """Subscribe to notifications for a characteristic"""
@@ -416,12 +436,24 @@ class CoyoteDevice(OutputDevice, QObject):
                     f"{LOG_PREFIX} Channel B ({self.strengths.channel_b}):\n{pulses_b}"
                 )
 
-        # Send the final command
-        try:
-            await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
-            self.sequence_number = (self.sequence_number + 1) % SEQUENCE_MODULO  # Wrap seq at 4 bits (0-15)
-        except Exception as e:
-            logger.error(f"{LOG_PREFIX} Failed to send command: {e}")
+        # Send the final command with retry logic for characteristic not found
+        max_retries = 3
+        retry_delay = 0.05  # 50ms between retries
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
+                self.sequence_number = (self.sequence_number + 1) % SEQUENCE_MODULO  # Wrap seq at 4 bits (0-15)
+                return  # Success
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+        
+        # All retries exhausted
+        logger.error(f"{LOG_PREFIX} Failed to send command after {max_retries} retries: {last_error}")
     
     async def disconnect(self):
         """Disconnect from device"""
