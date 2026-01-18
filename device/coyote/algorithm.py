@@ -183,24 +183,30 @@ class CoyoteAlgorithm:
     def _positional_intensity(self, time_s: float, volume: float) -> Tuple[int, int]:
         alpha, beta = self.position.get_position(time_s)
 
-        w_left = max(0.0, (beta + 1.0) / 2.0)
-        w_right = max(0.0, (1.0 - beta) / 2.0)
-        w_neutral = max(0.0, alpha)
+        p = np.clip((alpha + 1) / 2, 0, 1)  # rescale alpha to (0, 1)
 
-        total = w_left + w_right + w_neutral
-        if total > 0:
-            w_left /= total
-            w_right /= total
-            w_neutral /= total
+        # In 2-channel mode, ignore calibration values and use neutral defaults
+        if self.is_three_phase:
+            calibrate_center = np.clip(self.params.calibrate.center.last_value(), -10, -0.1)  # calibration outside this range is nonsensical
+            exponent = np.log(10**(calibrate_center / 10)) / np.log(0.5)  # roughly match what stereostim/FOC are doing
+            balance = self.params.calibrate.neutral.last_value()  # calibration adjustment between channel A and B
         else:
-            w_left = w_right = w_neutral = 0.0
+            # 2-channel mode: use neutral exponent (1.0) and no balance
+            exponent = 1.0
+            balance = 0.0
 
-        center_db = float(self.params.calibrate.center.last_value())
-        scale = ThreePhaseCenterCalibration(center_db).get_scale(alpha, beta)
+        # choose channel a/b intensity to move the sensation between a/b without affecting the overall signal intensity
+        intensity_a = p ** exponent
+        intensity_b = (1 - p) ** exponent
 
-        intensity_a = int((w_left + w_neutral) * volume * scale * 100.0)
-        intensity_b = int((w_right + w_neutral) * volume * scale * 100.0)
-        return intensity_a, intensity_b
+        intensity_a *= min(1, 10**(balance/10))
+        intensity_b *= min(1, 10**(-balance/10))
+
+        intensity_scale = 100
+        intensity_a *= intensity_scale * volume
+        intensity_b *= intensity_scale * volume
+
+        return int(intensity_a), int(intensity_b)
 
     def _log_packet(
         self,
