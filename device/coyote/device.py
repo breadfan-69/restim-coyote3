@@ -372,8 +372,18 @@ class CoyoteDevice(OutputDevice, QObject):
             interp_b = INTERP_NO_CHANGE  # No change
 
         # Pack sequence number + interpretation into 1 byte (upper 4 = seq, lower 4 = interp)
-        request_ack = not pulses
+        # Request ACK only when strength is being changed (need confirmation from device)
+        request_ack = strengths is not None
         control_byte = ((self.sequence_number if request_ack else 0) << 4) | (interp_a << 2) | interp_b
+
+        # Validate pulses before sending (protocol requirement: intensity must be 0-100)
+        valid_pulses = pulses
+        if pulses:
+            invalid_a = any(p.intensity < 0 or p.intensity > 100 for p in pulses.channel_a)
+            invalid_b = any(p.intensity < 0 or p.intensity > 100 for p in pulses.channel_b)
+            if invalid_a or invalid_b:
+                logger.warning(f"{LOG_PREFIX} Invalid pulse intensity detected (must be 0-100). Discarding pulses.")
+                valid_pulses = None
 
         # Build base command (B0 packet structure)
         command = bytearray([
@@ -384,11 +394,11 @@ class CoyoteDevice(OutputDevice, QObject):
         ])
 
         # Append pulse data if provided (waveform duration (aka frequency) + intensity)
-        if pulses:
-            command.extend([a.duration for a in pulses.channel_a])
-            command.extend([a.intensity for a in pulses.channel_a])
-            command.extend([b.duration for b in pulses.channel_b])
-            command.extend([b.intensity for b in pulses.channel_b])
+        if valid_pulses:
+            command.extend([a.duration for a in valid_pulses.channel_a])
+            command.extend([a.intensity for a in valid_pulses.channel_a])
+            command.extend([b.duration for b in valid_pulses.channel_b])
+            command.extend([b.intensity for b in valid_pulses.channel_b])
         else:
             command.extend([0] * B0_NO_PULSES_PAD_BYTES)  # No pulses = zero padding
 
@@ -396,14 +406,14 @@ class CoyoteDevice(OutputDevice, QObject):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"{LOG_PREFIX} Sending command (seq={self.sequence_number}):")
 
-            if pulses:
+            if valid_pulses:
                 pulses_a = "\n".join(
                     f"  Pulse {i+1}: Freq={pulse.frequency} Hz, Intensity={pulse.intensity}"
-                    for i, pulse in enumerate(pulses.channel_a)
+                    for i, pulse in enumerate(valid_pulses.channel_a)
                 )
                 pulses_b = "\n".join(
                     f"  Pulse {i+1}: Freq={pulse.frequency} Hz, Intensity={pulse.intensity}"
-                    for i, pulse in enumerate(pulses.channel_b)
+                    for i, pulse in enumerate(valid_pulses.channel_b)
                 )
                 
                 logger.debug(

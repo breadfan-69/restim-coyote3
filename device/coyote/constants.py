@@ -2,8 +2,8 @@
 DEVICE_NAME = "47L121000"
 
 # Coyote hardware timing and derived limits
-# Pulse duration limits in milliseconds
-MIN_PULSE_DURATION_MS = 5
+# Pulse duration limits in milliseconds (protocol spec: 10-240ms)
+MIN_PULSE_DURATION_MS = 10
 MAX_PULSE_DURATION_MS = 240
 
 # Derived hardware frequency limits (Hz)
