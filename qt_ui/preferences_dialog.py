@@ -191,6 +191,9 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
         if hasattr(self, 'icon_theme_combobox'):
             current_theme = qt_ui.settings.icon_theme.get()
             index = self.icon_theme_combobox.findData(current_theme)
+            if index < 0:
+                # Fallback: try finding by text if data lookup fails
+                index = self.icon_theme_combobox.findText(current_theme)
             if index >= 0:
                 # Temporarily disconnect signal to avoid firing on load
                 self.icon_theme_combobox.currentIndexChanged.disconnect(self._on_icon_theme_changed)
