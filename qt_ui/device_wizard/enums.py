@@ -13,6 +13,7 @@ class DeviceType(Enum):
     NEOSTIM_THREE_PHASE = 6
     FOCSTIM_FOUR_PHASE = 7
     COYOTE_THREE_PHASE = 8
+    COYOTE_TWO_CHANNEL = 9  # newly added
 
 
 class WaveformType(Enum):

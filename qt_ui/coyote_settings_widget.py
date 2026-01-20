@@ -184,6 +184,18 @@ class ChannelConfig:
     strength_max_setting: settings.Setting
 
 class ChannelControl:
+
+    def update_pulse_freq_limits(self):
+        if self.freq_min and self.freq_max and self.pulse_frequency:
+            min_val = self.freq_min.value()
+            max_val = self.freq_max.value()
+            self.pulse_frequency.setRange(min_val, max_val)
+            # Clamp current value if out of range
+            if self.pulse_frequency.value() < min_val:
+                self.pulse_frequency.setValue(min_val)
+            elif self.pulse_frequency.value() > max_val:
+                self.pulse_frequency.setValue(max_val)
+
     def __init__(self, parent: 'CoyoteSettingsWidget', config: ChannelConfig):
         self.parent = parent
         self.config = config
@@ -218,16 +230,18 @@ class ChannelControl:
         self.freq_min.setSingleStep(10)
         self.freq_min.setValue(self.config.freq_min_setting.get())
         self.freq_min.valueChanged.connect(self.on_freq_min_changed)
+        self.freq_min.valueChanged.connect(self.update_pulse_freq_limits)
         freq_min_layout.addWidget(QLabel("Min Freq (Hz)"))
         freq_min_layout.addWidget(self.freq_min)
         left.addLayout(freq_min_layout)
 
         freq_max_layout = QHBoxLayout()
         self.freq_max = QSpinBox()
-        self.freq_max.setRange(10, 500)
+        self.freq_max.setRange(10, 200)
         self.freq_max.setSingleStep(10)
         self.freq_max.setValue(self.config.freq_max_setting.get())
         self.freq_max.valueChanged.connect(self.on_freq_max_changed)
+        self.freq_max.valueChanged.connect(self.update_pulse_freq_limits)
         freq_max_layout.addWidget(QLabel("Max Freq (Hz)"))
         freq_max_layout.addWidget(self.freq_max)
         left.addLayout(freq_max_layout)
@@ -244,7 +258,7 @@ class ChannelControl:
 
         pulse_freq_layout = QHBoxLayout()
         self.pulse_frequency = QSpinBox()
-        self.pulse_frequency.setRange(0, 100)
+        self.pulse_frequency.setRange(1, 200)
         self.pulse_frequency.setSingleStep(1)
         self.pulse_frequency.setValue(50)
         pulse_freq_layout.addWidget(QLabel("Pulse Freq (Hz)"))
@@ -572,37 +586,42 @@ class PulseGraph(QWidget):
     def get_color_for_frequency(self, frequency: float) -> QColor:
         """
         Calculate color based on frequency using green→yellow→red→purple gradient.
-        10 Hz (green) → 30 Hz (green) → 70 Hz (yellow) → 100 Hz (red) → 200 Hz (purple)
+        1 Hz (green) → 30 Hz (green) → 70 Hz (yellow) → 100 Hz (red) → 200 Hz (purple)
+        Always uses fixed range 1-200 Hz for color mapping.
         """
-        # Normalize frequency to 0-1 range
-        freq_range = self.freq_max - self.freq_min
+        # Fixed normalization range
+        freq_min = 1
+        freq_max = 200
+        freq_range = freq_max - freq_min
         if freq_range <= 0:
             normalized = 0.5
         else:
-            normalized = (frequency - self.freq_min) / freq_range
+            normalized = (frequency - freq_min) / freq_range
             normalized = max(0, min(1, normalized))  # Clamp to 0-1
-        
         # Calculate normalized frequencies for key points
-        # 30 Hz = (30-10)/(200-10) ≈ 0.105
-        # 70 Hz = (70-10)/(200-10) ≈ 0.316
-        # 100 Hz = (100-10)/(200-10) ≈ 0.474
-        
-        if normalized <= 0.105:  # 10-30 Hz: Pure green
+        # 20 Hz = (20-1)/(200-1) ≈ 0.095
+        # 30 Hz = (30-1)/(200-1) ≈ 0.146
+        # 70 Hz = (70-1)/(200-1) ≈ 0.346
+        # 100 Hz = (100-1)/(200-1) ≈ 0.497
+        if normalized <= 0.095:  # 1-20 Hz: Blue
             r = 0
-            g = 255
-            b = 0
-        elif normalized <= 0.316:  # 30-70 Hz: Fast green to yellow
-            t = (normalized - 0.105) / (0.316 - 0.105)  # 0 to 1 over this range
+            g = 100
+            b = 255
+        elif normalized <= 0.146:  # 20-30 Hz: Blue to Green
+            t = (normalized - 0.095) / (0.146 - 0.095)
+            r = 0
+            g = int(100 + (155 * t))
+            b = int(255 - (255 * t))
+        elif normalized <= 0.346:  # 30-70 Hz: Green to Deep Yellow
+            t = (normalized - 0.146) / (0.346 - 0.146)
             r = int(255 * t)
-            g = 255
+            g = int(255 - 80 * t)  # 255→175 (deeper yellow)
             b = 0
-        else:  # 70-200 Hz: Yellow/Red to Purple
-            t = (normalized - 0.316) / (1.0 - 0.316)  # 0 to 1 over this range
+        else:  # 70-200 Hz: Deep Yellow/Red to Purple
+            t = (normalized - 0.346) / (1.0 - 0.346)
             r = 255
-            g = int(255 * max(0, 1 - t * 1.3))  # Green decreases faster to 0
+            g = int(175 * max(0, 1 - t * 1.3))  # Green decreases faster to 0
             b = int(150 * t)  # Blue increases from 0 to 150 (more purple)
-        
-        # Return with semi-transparency
         return QColor(r, g, b, 200)
     
     def clean_old_pulses(self):

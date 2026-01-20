@@ -87,20 +87,34 @@ class PulseGenerator:
         duration_limits = self._duration_limits(min_freq, max_freq)
 
         # Use per-channel pulse frequency if available, otherwise use global
+        funscript_min = getattr(self.channel_params, 'funscript_min', None)
+        funscript_max = getattr(self.channel_params, 'funscript_max', None)
+        funscript_active = funscript_min is not None and funscript_max is not None and funscript_min < funscript_max
         if self.channel_params.pulse_frequency is not None:
             raw_frequency = float(self.channel_params.pulse_frequency.interpolate(time_s))
         else:
             raw_frequency = float(self.params.pulse_frequency.interpolate(time_s))
-        
-        normalised = normalize(raw_frequency, self._pulse_freq_limits)
-        mapped_frequency = min_freq + (max_freq - min_freq) * normalised
+
+        if funscript_active:
+            # Dynamically stretch/compress funscript values to always fall within current min/max
+            # Use current spinbox min/max for normalization window
+            normalized = (raw_frequency - funscript_min) / (funscript_max - funscript_min)
+            normalized = max(0.0, min(1.0, normalized))
+            mapped_frequency = min_freq + (max_freq - min_freq) * normalized
+            mapped_frequency = max(min_freq, min(max_freq, mapped_frequency))
+        else:
+            # Default normalization
+            normalized = normalize(raw_frequency, self._pulse_freq_limits)
+            mapped_frequency = min_freq + (max_freq - min_freq) * normalized
+            mapped_frequency = max(min_freq, min(max_freq, mapped_frequency))
+
         if mapped_frequency <= 0:
             mapped_frequency = 1000.0 / duration_limits[1]
         base_duration = 1000.0 / mapped_frequency
-        
+
         # Debug: Log frequency values to verify funscript data is being applied
         if sequence_index % 100 == 0:  # Log every 100th pulse to avoid spam
-            logger.debug(f"[{self.name}] seq={sequence_index} raw_freq={raw_frequency:.1f}Hz normalised={normalised:.3f} mapped_freq={mapped_frequency:.1f}Hz duration={base_duration:.1f}ms")
+            logger.debug(f"[{self.name}] seq={sequence_index} raw_freq={raw_frequency:.1f}Hz normalized={normalized:.3f} mapped_freq={mapped_frequency:.1f}Hz duration={base_duration:.1f}ms")
 
         # No jitter or texture - use base duration directly
         desired_ms = base_duration
@@ -116,7 +130,7 @@ class PulseGenerator:
         debug = PulseDebug(
             sequence_index=sequence_index,
             raw_frequency_hz=raw_frequency,
-            normalised_frequency=normalised,
+            normalised_frequency=normalized,
             mapped_frequency_hz=mapped_frequency,
             frequency_limits=(min_freq, max_freq),
             base_duration_ms=base_duration,
