@@ -105,13 +105,49 @@ class CoyoteAlgorithm:
 
         self.position = ThreePhasePosition(params.position, params.transform)
 
+        from qt_ui import settings
+        device_type = settings.device_config_device_type.get()
+        if device_type == 9:
+            positional_fn = self._get_positional_intensities
+        else:
+            positional_fn = self._positional_intensity
+
         channels: List[ChannelPipeline] = []
         for name, channel_params in (("A", params.channel_a), ("B", params.channel_b)):
             generator = PulseGenerator(name, params, channel_params, carrier_freq_limits, pulse_freq_limits, pulse_width_limits, self.tuning)
-            controller = ChannelController(name, media, params, generator, self._positional_intensity, self.tuning)
+            controller = ChannelController(name, media, params, generator, positional_fn, self.tuning)
             state = ChannelState()
             channels.append(ChannelPipeline(name, generator, controller, state))
         self._channels: Tuple[ChannelPipeline, ...] = tuple(channels)
+        self.next_update_time: float = 0.0
+        self._last_update_time: float = None
+    def _get_positional_intensities(self, t: float, volume: float) -> Tuple[int, int]:
+        """Barycentric phase diagram mapping: (beta, alpha) with left=+1, right=-1, neutral=+1 (top)."""
+        alpha, beta = self.position.get_position(t)
+
+        # Barycentric weights for triangle corners
+        w_L = max(0.0, (beta + 1) / 2)
+        w_R = max(0.0, (1 - beta) / 2)
+        w_N = max(0.0, alpha)
+        sum_w = w_L + w_R + w_N
+        if sum_w > 0:
+            w_L /= sum_w
+            w_R /= sum_w
+            w_N /= sum_w
+        else:
+            w_L = w_R = w_N = 0.0
+
+        # Calibration scaling
+        center_val = self.params.calibrate.center.last_value()
+        from stim_math.threephase import ThreePhaseCenterCalibration
+        center_calib = ThreePhaseCenterCalibration(center_val)
+        scale = center_calib.get_scale(alpha, beta)
+
+        # Channel mapping: A = left+neutral, B = right+neutral
+        intensity_a = int((w_L + w_N) * volume * scale * 100.0)
+        intensity_b = int((w_R + w_N) * volume * scale * 100.0)
+
+        return intensity_a, intensity_b
 
         self._last_update_time: Optional[float] = None
         self.next_update_time: float = 0.0
