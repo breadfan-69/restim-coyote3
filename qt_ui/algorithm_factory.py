@@ -3,7 +3,7 @@ import numpy as np
 
 from device.focstim.fourphase_algorithm import FOCStimFourphaseAlgorithm
 from device.neostim.algorithm import NeoStimAlgorithm
-from device.coyote.algorithm import CoyoteAlgorithm
+from device.coyote.algorithm import CoyoteAlgorithm, CoyoteDigletAlgorithm
 from qt_ui.device_wizard.enums import DeviceConfiguration, DeviceType, WaveformType
 from stim_math.audio_gen.base_classes import AudioGenerationAlgorithm
 from device.focstim.threephase_algorithm import FOCStimThreephaseAlgorithm
@@ -52,7 +52,7 @@ class AlgorithmFactory:
         elif device.device_type == DeviceType.NEOSTIM_THREE_PHASE:
             return self.create_neostim(device)
         elif device.device_type == DeviceType.COYOTE_THREE_PHASE:
-            return self.create_coyote(device)
+            return self.create_coyote_diglet(device)
         else:
             raise RuntimeError('unknown device type')
 
@@ -245,7 +245,7 @@ class AlgorithmFactory:
         )
         return algorithm
     
-    def create_coyote(self, device: DeviceConfiguration) -> AudioGenerationAlgorithm:
+    def create_coyote_diglet(self, device: DeviceConfiguration) -> AudioGenerationAlgorithm:
         # Get frequency limits from kit
         carrier_freq_limits = self.kit.limits_for_axis(AxisEnum.CARRIER_FREQUENCY)
         pulse_freq_limits = self.kit.limits_for_axis(AxisEnum.PULSE_FREQUENCY)
@@ -253,7 +253,7 @@ class AlgorithmFactory:
         pulse_rise_time_limits = self.kit.limits_for_axis(AxisEnum.PULSE_RISE_TIME)
 
         # Create the algorithm
-        algorithm = CoyoteAlgorithm(
+        algorithm = CoyoteDigletAlgorithm(
             self.media_sync,
             CoyoteAlgorithmParams(
                 position=ThreephasePositionParams(

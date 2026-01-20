@@ -121,6 +121,64 @@ class CoyoteAlgorithm:
         self._channels: Tuple[ChannelPipeline, ...] = tuple(channels)
         self.next_update_time: float = 0.0
         self._last_update_time: float = None
+
+
+# --- CoyoteDigletAlgorithm: for COYOTE_THREE_PHASE only ---
+class CoyoteDigletAlgorithm:
+    def __init__(
+        self,
+        media: AbstractMediaSync,
+        params: CoyoteAlgorithmParams,
+        safety_limits: SafetyParams,
+        carrier_freq_limits: Tuple[float, float],
+        pulse_freq_limits: Tuple[float, float],
+        pulse_width_limits: Tuple[float, float],
+        pulse_rise_time_limits: Tuple[float, float],
+        tuning: Optional[PulseTuning] = None,
+        is_three_phase: bool = True,
+    ) -> None:
+        self.media = media
+        self.params = params
+        self.safety_limits = safety_limits
+        self._carrier_limits = carrier_freq_limits
+        self._pulse_rise_time_limits = pulse_rise_time_limits
+        self.tuning = tuning or load_pulse_tuning()
+        self.is_three_phase = is_three_phase
+
+        self.position = ThreePhasePosition(params.position, params.transform)
+
+        # Always use diglet positional intensity for this algorithm
+        positional_fn = self._positional_intensity
+
+        channels: List[ChannelPipeline] = []
+        for name, channel_params in (("A", params.channel_a), ("B", params.channel_b)):
+            generator = PulseGenerator(name, params, channel_params, carrier_freq_limits, pulse_freq_limits, pulse_width_limits, self.tuning)
+            controller = ChannelController(name, media, params, generator, positional_fn, self.tuning)
+            state = ChannelState()
+            channels.append(ChannelPipeline(name, generator, controller, state))
+        self._channels: Tuple[ChannelPipeline, ...] = tuple(channels)
+        self.next_update_time: float = 0.0
+        self._last_update_time: float = None
+
+    def _positional_intensity(self, time_s: float, volume: float) -> Tuple[int, int]:
+        alpha, beta = self.position.get_position(time_s)
+
+        p = np.clip((alpha + 1) / 2, 0, 1)  # rescale alpha to (0, 1)
+        calibrate_center = np.clip(self.params.calibrate.center.last_value(), -10, -0.1)
+        exponent = np.log(10**(calibrate_center / 10)) / np.log(0.5)
+        # choose channel a/b intensity to move the sensation between a/b without affecting the overall signal intensity
+        intensity_a = p ** exponent
+        intensity_b = (1 - p) ** exponent
+
+        balance = self.params.calibrate.neutral.last_value()  # calibration adjustment between channel A and B
+        intensity_a *= min(1, 10**(balance/10))
+        intensity_b *= min(1, 10**(-balance/10))
+
+        intensity_scale = 100
+        intensity_a *= intensity_scale * volume
+        intensity_b *= intensity_scale * volume
+
+        return int(intensity_a), int(intensity_b)
     def _get_positional_intensities(self, t: float, volume: float) -> Tuple[int, int]:
         """Barycentric phase diagram mapping: (beta, alpha) with left=+1, right=-1, neutral=+1 (top)."""
         alpha, beta = self.position.get_position(t)
