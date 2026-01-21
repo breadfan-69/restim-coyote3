@@ -685,10 +685,8 @@ class PulseGraph(QWidget):
         # Sort pulses by timestamp so they display in chronological order
         sorted_pulses = sorted(self.pulses, key=lambda p: p.timestamp)
         
-        # Find the maximum intensity in current visible pulses
-        max_intensity = max(pulse.applied_intensity for pulse in sorted_pulses)
-        # Use either the channel limit or the current max intensity, whichever is larger
-        scale_max = max(max_intensity, self.channel_limit)
+        # Use channel_limit for scaling, do not average or smooth
+        scale_max = self.channel_limit
         
         # Get the time span of the visible pulses
         now = time.time()

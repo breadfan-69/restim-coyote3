@@ -64,11 +64,13 @@ class Window(QMainWindow, Ui_MainWindow):
         super().__init__(parent)
         self.setupUi(self)
 
-        # Set AppUserModelID early for proper Windows taskbar handling
+        # Set a unique AppUserModelID for every instance to prevent taskbar stacking
         try:
             import ctypes
+            import uuid
+            unique_id = f"restim.stimulation.app.{uuid.uuid4()}"
             shell32 = ctypes.windll.shell32
-            shell32.SetCurrentProcessExplicitAppUserModelID('restim.stimulation.app')
+            shell32.SetCurrentProcessExplicitAppUserModelID(unique_id)
         except Exception as e:
             logger.debug(f"Failed to set AppUserModelID: {e}")
 
@@ -410,14 +412,16 @@ class Window(QMainWindow, Ui_MainWindow):
         if config.device_type == DeviceType.NEOSTIM_THREE_PHASE:
             visible |= {self.tab_neostim}
             visible -= {self.tab_vibrate, self.tab_details}
-        if config.device_type == DeviceType.COYOTE_THREE_PHASE:
+        if config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             visible |= {self.tab_coyote}
-            # Show calibration tab only if three-phase mode (not 2-channel)
-            if self.wizard.page_coyote_waveform_select.is_three_phase():
-                visible |= {self.tab_coyote_calibration}
-            else:
+            # Replace calibration tab with three-phase tab for coyote_three_phase
+            if config.device_type == DeviceType.COYOTE_THREE_PHASE:
+                visible |= {self.tab_threephase}
                 visible -= {self.tab_coyote_calibration}
-            visible -= {self.tab_vibrate, self.tab_threephase, self.tab_pulse_settings, self.tab_details}
+            else:
+                visible -= {self.tab_threephase}
+                visible -= {self.tab_coyote_calibration}
+            visible -= {self.tab_vibrate, self.tab_pulse_settings, self.tab_details}
 
         for tab in all_tabs:
             set_visible(tab, tab in visible)
@@ -434,7 +438,7 @@ class Window(QMainWindow, Ui_MainWindow):
             self.tcode_command_router.set_carrier_axis(self.tab_pulse_settings.axis_carrier_frequency)
 
         # populate motion generator and patterns combobox
-        if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.NEOSTIM_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE, DeviceType.COYOTE_THREE_PHASE):
+        if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.NEOSTIM_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE, DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             self.motion_3.set_enable(True)
             self.motion_4.set_enable(False)
             self.stackedWidget_visual.setCurrentIndex(
@@ -448,34 +452,35 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.stackedWidget_visual.indexOf(self.page_fourphase)
             )
         
-        if config.device_type == DeviceType.COYOTE_THREE_PHASE:
-            # If switching Coyote modes (2-channel to simulated or vice versa),
-            # properly disconnect and cleanup the old device first
-            if isinstance(self.output_device, CoyoteDevice):
-                logger.info("Coyote mode changed, disconnecting old device...")
-                # Stop any ongoing updates
-                self.output_device.stop_updates()
-                # Disconnect asynchronously
-                if self.output_device._event_loop:
-                    asyncio.run_coroutine_threadsafe(self.output_device.disconnect(), self.output_device._event_loop)
-                # Clean up widget resources
-                if hasattr(self, 'tab_coyote'):
-                    self.tab_coyote.cleanup()
-                self.output_device = None
-                # Wait for disconnect to fully complete before creating new device
-                import time
-                time.sleep(0.5)
-            
-            self.output_device = CoyoteDevice(DEVICE_NAME)
-            self.output_device.parameters = CoyoteParams(
-                channel_a_limit=qt_ui.settings.coyote_channel_a_limit.get(),
-                channel_b_limit=qt_ui.settings.coyote_channel_b_limit.get(),
-                channel_a_freq_balance=qt_ui.settings.coyote_channel_a_freq_balance.get(),
-                channel_b_freq_balance=qt_ui.settings.coyote_channel_b_freq_balance.get(),
-                channel_a_intensity_balance=qt_ui.settings.coyote_channel_a_intensity_balance.get(),
-                channel_b_intensity_balance=qt_ui.settings.coyote_channel_b_intensity_balance.get()
-            )
-            self.tab_coyote.setup_device(self.output_device)
+        if config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
+            # Only disconnect if switching to a device type that is NOT 8 or 9
+            prev_type = None
+            if self.output_device and isinstance(self.output_device, CoyoteDevice):
+                # Try to get previous device type from settings or state
+                prev_type = qt_ui.settings.device_config_device_type.get()
+            if self.output_device and isinstance(self.output_device, CoyoteDevice):
+                # Only disconnect if the new device type is not 8 or 9
+                if config.device_type not in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL) or (prev_type not in (8, 9)):
+                    logger.info("Coyote mode changed, disconnecting old device...")
+                    self.output_device.stop_updates()
+                    if self.output_device._event_loop:
+                        asyncio.run_coroutine_threadsafe(self.output_device.disconnect(), self.output_device._event_loop)
+                    if hasattr(self, 'tab_coyote'):
+                        self.tab_coyote.cleanup()
+                    self.output_device = None
+                    import time
+                    time.sleep(0.5)
+            if self.output_device is None:
+                self.output_device = CoyoteDevice(DEVICE_NAME)
+                self.output_device.parameters = CoyoteParams(
+                    channel_a_limit=qt_ui.settings.coyote_channel_a_limit.get(),
+                    channel_b_limit=qt_ui.settings.coyote_channel_b_limit.get(),
+                    channel_a_freq_balance=qt_ui.settings.coyote_channel_a_freq_balance.get(),
+                    channel_b_freq_balance=qt_ui.settings.coyote_channel_b_freq_balance.get(),
+                    channel_a_intensity_balance=qt_ui.settings.coyote_channel_a_intensity_balance.get(),
+                    channel_b_intensity_balance=qt_ui.settings.coyote_channel_b_intensity_balance.get()
+                )
+                self.tab_coyote.setup_device(self.output_device)
 
         self.refresh_pattern_combobox()
 
@@ -497,13 +502,13 @@ class Window(QMainWindow, Ui_MainWindow):
         device = DeviceConfiguration.from_settings()
 
         # Clean up previous device if switching away
-        if self.output_device and device.device_type != DeviceType.COYOTE_THREE_PHASE:
+        if self.output_device and device.device_type not in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             self.output_device = None
             # Clean up Coyote widget resources if switching away from Coyote
             if hasattr(self, 'tab_coyote'):
                 self.tab_coyote.cleanup()
 
-        assert (self.output_device is None or device.device_type == DeviceType.COYOTE_THREE_PHASE)
+        assert (self.output_device is None or device.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL))
 
         algorithm_factory = AlgorithmFactory(
             self,
@@ -559,7 +564,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.playstate = PlayState.PLAYING
                 self.tab_volume.set_play_state(self.playstate)
                 self.refresh_play_button_icon()
-        elif device.device_type == DeviceType.COYOTE_THREE_PHASE:
+        elif device.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             if not self.output_device:
                 logger.warning("Coyote device is no longer initialized")
                 return

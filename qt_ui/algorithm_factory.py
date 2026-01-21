@@ -53,8 +53,62 @@ class AlgorithmFactory:
             return self.create_neostim(device)
         elif device.device_type == DeviceType.COYOTE_THREE_PHASE:
             return self.create_coyote_diglet(device)
-        else:
-            raise RuntimeError('unknown device type')
+        elif device.device_type == DeviceType.COYOTE_TWO_CHANNEL:
+            return self.create_coyote_two_channel(device)
+
+    def create_coyote_two_channel(self, device: DeviceConfiguration) -> AudioGenerationAlgorithm:
+        carrier_freq_limits = self.kit.limits_for_axis(AxisEnum.CARRIER_FREQUENCY)
+        pulse_freq_limits = self.kit.limits_for_axis(AxisEnum.PULSE_FREQUENCY)
+        pulse_width_limits = self.kit.limits_for_axis(AxisEnum.PULSE_WIDTH)
+        pulse_rise_time_limits = self.kit.limits_for_axis(AxisEnum.PULSE_RISE_TIME)
+
+        algorithm = CoyoteAlgorithm(
+            self.media_sync,
+            CoyoteAlgorithmParams(
+                position=ThreephasePositionParams(
+                    self.get_axis_alpha(),
+                    self.get_axis_beta(),
+                ),
+                transform=self.mainwindow.tab_threephase.transform_params,
+                calibrate=self.mainwindow.tab_threephase.calibrate_params,
+                volume=VolumeParams(
+                    api=self.get_axis_volume_api(),
+                    master=self.get_axis_volume_master(),
+                    inactivity=self.get_axis_volume_inactivity(),
+                    external=self.get_axis_volume_external(),
+                ),
+                carrier_frequency=self.get_axis_pulse_carrier_frequency(),
+                pulse_frequency=self.get_axis_pulse_frequency(),
+                pulse_width=self.get_axis_pulse_width(),
+                pulse_interval_random=self.get_axis_pulse_interval_random(),
+                pulse_rise_time=self.get_axis_pulse_rise_time(),
+                max_intensity_change_per_pulse=settings.coyote_max_intensity_change_per_pulse,
+                channel_a=CoyoteChannelParams(
+                    minimum_frequency=settings.coyote_channel_a_freq_min,
+                    maximum_frequency=settings.coyote_channel_a_freq_max,
+                    maximum_strength=settings.coyote_channel_a_strength_max,
+                    vibration=self.get_axis_vib1_all(),
+                    pulse_frequency=self.get_axis_coyote_channel_a_pulse_frequency()
+                ),
+                channel_b=CoyoteChannelParams(
+                    minimum_frequency=settings.coyote_channel_b_freq_min,
+                    maximum_frequency=settings.coyote_channel_b_freq_max,
+                    maximum_strength=settings.coyote_channel_b_strength_max,
+                    vibration=self.get_axis_vib2_all(),
+                    pulse_frequency=self.get_axis_coyote_channel_b_pulse_frequency()
+                )
+            ),
+            safety_limits=SafetyParams(
+                device.min_frequency,
+                device.max_frequency,
+            ),
+            carrier_freq_limits=carrier_freq_limits,
+            pulse_freq_limits=pulse_freq_limits,
+            pulse_width_limits=pulse_width_limits,
+            pulse_rise_time_limits=pulse_rise_time_limits,
+            is_three_phase=False
+        )
+        return algorithm
 
     def create_3phase_continuous(self, device: DeviceConfiguration) -> AudioGenerationAlgorithm:
         algorithm = ThreePhaseAlgorithm(
