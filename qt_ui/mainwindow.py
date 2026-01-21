@@ -414,14 +414,9 @@ class Window(QMainWindow, Ui_MainWindow):
             visible -= {self.tab_vibrate, self.tab_details}
         if config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             visible |= {self.tab_coyote}
-            # Replace calibration tab with three-phase tab for coyote_three_phase
-            if config.device_type == DeviceType.COYOTE_THREE_PHASE:
-                visible |= {self.tab_threephase}
-                visible -= {self.tab_coyote_calibration}
-            else:
-                visible -= {self.tab_threephase}
-                visible -= {self.tab_coyote_calibration}
-            visible -= {self.tab_vibrate, self.tab_pulse_settings, self.tab_details}
+            # Show three-phase tab for both device types 8 and 9
+            visible |= {self.tab_threephase}
+            visible -= {self.tab_coyote_calibration, self.tab_vibrate, self.tab_pulse_settings, self.tab_details}
 
         for tab in all_tabs:
             set_visible(tab, tab in visible)

@@ -219,10 +219,17 @@ class ChannelControl:
         return self.channel_id.upper() == 'A'
 
     def build_ui(self) -> QHBoxLayout:
-        layout = QHBoxLayout()
+        # Create a group box for this channel
+        group_box = QtWidgets.QGroupBox(f"Channel {self.channel_id}")
+        group_layout = QHBoxLayout()
 
         left = QVBoxLayout()
-        left.addWidget(QLabel(f"Channel {self.channel_id}"))
+
+        # Create a group box for freq and strength controls
+        freq_strength_group = QtWidgets.QGroupBox("Max/Min")
+        freq_strength_group.setCheckable(True)
+        freq_strength_group.setChecked(True)
+        freq_strength_layout = QVBoxLayout()
 
         freq_min_layout = QHBoxLayout()
         self.freq_min = QSpinBox()
@@ -233,7 +240,7 @@ class ChannelControl:
         self.freq_min.valueChanged.connect(self.update_pulse_freq_limits)
         freq_min_layout.addWidget(QLabel("Min Freq (Hz)"))
         freq_min_layout.addWidget(self.freq_min)
-        left.addLayout(freq_min_layout)
+        freq_strength_layout.addLayout(freq_min_layout)
 
         freq_max_layout = QHBoxLayout()
         self.freq_max = QSpinBox()
@@ -244,7 +251,7 @@ class ChannelControl:
         self.freq_max.valueChanged.connect(self.update_pulse_freq_limits)
         freq_max_layout.addWidget(QLabel("Max Freq (Hz)"))
         freq_max_layout.addWidget(self.freq_max)
-        left.addLayout(freq_max_layout)
+        freq_strength_layout.addLayout(freq_max_layout)
 
         strength_layout = QHBoxLayout()
         strength_layout.addWidget(QLabel("Max Strength"))
@@ -254,7 +261,18 @@ class ChannelControl:
         self.strength_max.setValue(self.config.strength_max_setting.get())
         self.strength_max.valueChanged.connect(self.on_strength_max_changed)
         strength_layout.addWidget(self.strength_max)
-        left.addLayout(strength_layout)
+        freq_strength_layout.addLayout(strength_layout)
+
+        freq_strength_group.setLayout(freq_strength_layout)
+        left.addWidget(freq_strength_group)
+
+        # Enable/disable mouse interaction based on group box checkbox
+        def set_mouse_interaction(enabled):
+            self.freq_min.setEnabled(enabled)
+            self.freq_max.setEnabled(enabled)
+            self.strength_max.setEnabled(enabled)
+        freq_strength_group.toggled.connect(set_mouse_interaction)
+        set_mouse_interaction(True)
 
         pulse_freq_layout = QHBoxLayout()
         self.pulse_frequency = QSpinBox()
@@ -264,13 +282,12 @@ class ChannelControl:
         pulse_freq_layout.addWidget(QLabel("Pulse Freq (Hz)"))
         pulse_freq_layout.addWidget(self.pulse_frequency)
         left.addLayout(pulse_freq_layout)
-        
+
         # Create axis controller for this channel's pulse_frequency
         self.pulse_frequency_controller = AxisController(self.pulse_frequency)
-        # Initialize with a constant axis based on the spinbox's current value
         self.pulse_frequency_controller.link_to_internal_axis(create_constant_axis(self.pulse_frequency.value()))
 
-        layout.addLayout(left)
+        group_layout.addLayout(left)
 
         self.pulse_graph = PulseGraphContainer(self.parent.graph_window, self.freq_min, self.freq_max)
         self.pulse_graph.plot.setMinimumHeight(100)
@@ -283,7 +300,7 @@ class ChannelControl:
         self.pulse_graph.attach_stats_label(self.stats_label)
         graph_column.addWidget(self.stats_label)
 
-        layout.addLayout(graph_column)
+        group_layout.addLayout(graph_column)
 
         volume_layout = QVBoxLayout()
         self.volume_slider = QSlider(Qt.Vertical)
@@ -293,9 +310,14 @@ class ChannelControl:
         self.volume_label.setAlignment(Qt.AlignHCenter)
         volume_layout.addWidget(self.volume_slider)
         volume_layout.addWidget(self.volume_label)
-        layout.addLayout(volume_layout)
+        group_layout.addLayout(volume_layout)
 
         self.update_volume_label(self.volume_slider.value())
+        group_box.setLayout(group_layout)
+
+        # Return a layout containing just the group box for this channel
+        layout = QHBoxLayout()
+        layout.addWidget(group_box)
         return layout
 
     def reset_volume(self):
