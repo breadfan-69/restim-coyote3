@@ -83,58 +83,28 @@ class PulseGenerator:
         self._phase = (self._phase + phase_delta) % (2 * math.pi)
 
     def create_pulse(self, time_s: float, intensity: int, sequence_index: int) -> Tuple[CoyotePulse, PulseDebug]:
-        min_freq, max_freq = self._channel_frequency_window()
-        duration_limits = self._duration_limits(min_freq, max_freq)
 
-        # Use per-channel pulse frequency if available, otherwise use global
-        funscript_min = getattr(self.channel_params, 'funscript_min', None)
-        funscript_max = getattr(self.channel_params, 'funscript_max', None)
-        funscript_active = funscript_min is not None and funscript_max is not None and funscript_min < funscript_max
+        # Use requested pulse frequency directly
         if self.channel_params.pulse_frequency is not None:
-            raw_frequency = float(self.channel_params.pulse_frequency.interpolate(time_s))
+            requested_frequency = float(self.channel_params.pulse_frequency.interpolate(time_s))
         else:
-            raw_frequency = float(self.params.pulse_frequency.interpolate(time_s))
+            requested_frequency = float(self.params.pulse_frequency.interpolate(time_s))
 
-        if funscript_active:
-            # Dynamically stretch/compress funscript values to always fall within current min/max
-            # Use current spinbox min/max for normalization window
-            normalized = (raw_frequency - funscript_min) / (funscript_max - funscript_min)
-            normalized = max(0.0, min(1.0, normalized))
-            mapped_frequency = min_freq + (max_freq - min_freq) * normalized
-            mapped_frequency = max(min_freq, min(max_freq, mapped_frequency))
-        else:
-            # Default normalization
-            normalized = normalize(raw_frequency, self._pulse_freq_limits)
-            mapped_frequency = min_freq + (max_freq - min_freq) * normalized
-            mapped_frequency = max(min_freq, min(max_freq, mapped_frequency))
-
-        if mapped_frequency <= 0:
-            mapped_frequency = 1000.0 / duration_limits[1]
-        base_duration = 1000.0 / mapped_frequency
-
-        # Debug: Log frequency values to verify funscript data is being applied
-        if sequence_index % 100 == 0:  # Log every 100th pulse to avoid spam
-            logger.debug(f"[{self.name}] seq={sequence_index} raw_freq={raw_frequency:.1f}Hz normalized={normalized:.3f} mapped_freq={mapped_frequency:.1f}Hz duration={base_duration:.1f}ms")
-
-        # No jitter or texture - use base duration directly
-        desired_ms = base_duration
-        duration, residual = self._apply_residual(desired_ms)
-        duration, clamped = self._clamp_duration(duration, duration_limits)
-        if clamped:
-            residual = 0.0
-
-        final_duration = max(MIN_PULSE_DURATION_MS, duration)
-        final_frequency = int(max(1, round(1000.0 / final_duration)))
+        # Clamp frequency to avoid division by zero and respect duration limits
+        requested_frequency = max(1, requested_frequency)
+        base_duration = 1000.0 / requested_frequency
+        base_duration = clamp(base_duration, MIN_PULSE_DURATION_MS, MAX_PULSE_DURATION_MS)
+        final_frequency = int(max(1, round(1000.0 / base_duration)))
         final_intensity = int(clamp(intensity, 0, 100))
 
         debug = PulseDebug(
             sequence_index=sequence_index,
-            raw_frequency_hz=raw_frequency,
-            normalised_frequency=normalized,
-            mapped_frequency_hz=mapped_frequency,
-            frequency_limits=(min_freq, max_freq),
+            raw_frequency_hz=requested_frequency,
+            normalised_frequency=1.0,
+            mapped_frequency_hz=requested_frequency,
+            frequency_limits=(1, 1000),
             base_duration_ms=base_duration,
-            duration_limits=duration_limits,
+            duration_limits=(MIN_PULSE_DURATION_MS, MAX_PULSE_DURATION_MS),
             jitter_fraction=0.0,
             jitter_factor=0.0,
             width_normalised=0.0,
@@ -142,11 +112,11 @@ class PulseGenerator:
             texture_headroom_up_ms=0.0,
             texture_headroom_down_ms=0.0,
             texture_applied_ms=0.0,
-            desired_duration_ms=desired_ms,
-            residual_ms=residual,
+            desired_duration_ms=base_duration,
+            residual_ms=0.0,
         )
 
-        return CoyotePulse(duration=final_duration, intensity=final_intensity, frequency=final_frequency), debug
+        return CoyotePulse(duration=int(base_duration), intensity=final_intensity, frequency=final_frequency), debug
 
     def _channel_frequency_window(self) -> Tuple[float, float]:
         minimum = max(float(self.channel_params.minimum_frequency.get()), HARDWARE_MIN_FREQ_HZ)

@@ -226,7 +226,7 @@ class ChannelControl:
 
         freq_min_layout = QHBoxLayout()
         self.freq_min = QSpinBox()
-        self.freq_min.setRange(10, 500)
+        self.freq_min.setRange(4, 500)
         self.freq_min.setSingleStep(10)
         self.freq_min.setValue(self.config.freq_min_setting.get())
         self.freq_min.valueChanged.connect(self.on_freq_min_changed)
@@ -237,7 +237,7 @@ class ChannelControl:
 
         freq_max_layout = QHBoxLayout()
         self.freq_max = QSpinBox()
-        self.freq_max.setRange(10, 200)
+        self.freq_max.setRange(4, 200)
         self.freq_max.setSingleStep(10)
         self.freq_max.setValue(self.config.freq_max_setting.get())
         self.freq_max.valueChanged.connect(self.on_freq_max_changed)
@@ -258,7 +258,7 @@ class ChannelControl:
 
         pulse_freq_layout = QHBoxLayout()
         self.pulse_frequency = QSpinBox()
-        self.pulse_frequency.setRange(1, 200)
+        self.pulse_frequency.setRange(4, 200)
         self.pulse_frequency.setSingleStep(1)
         self.pulse_frequency.setValue(50)
         pulse_freq_layout.addWidget(QLabel("Pulse Freq (Hz)"))
@@ -540,7 +540,7 @@ class PulseGraph(QWidget):
         
         # Store pulses for visualization
         self.pulses = []
-        self.channel_limit = 100  # Default channel limit
+        self.channel_limit = 200  # Default channel limit
         
         # Packet tracking for FIFO visualization
         self.current_packet_index = 0  # Which 4-pulse packet is currently active

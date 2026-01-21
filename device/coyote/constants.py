@@ -3,12 +3,12 @@ DEVICE_NAME = "47L121000"
 
 # Coyote hardware timing and derived limits
 # Pulse duration limits in milliseconds (protocol spec: 10-240ms)
-MIN_PULSE_DURATION_MS = 10
+MIN_PULSE_DURATION_MS = 5
 MAX_PULSE_DURATION_MS = 240
 
 # Derived hardware frequency limits (Hz)
 HARDWARE_MAX_FREQ_HZ = 1000.0 / MIN_PULSE_DURATION_MS  # ~200 Hz
-HARDWARE_MIN_FREQ_HZ = 1000.0 / MAX_PULSE_DURATION_MS  # ~4.17 Hz
+HARDWARE_MIN_FREQ_HZ = 4.0  # Set minimum frequency to 4 Hz
 
 # Packet behaviour
 PULSES_PER_PACKET = 4
