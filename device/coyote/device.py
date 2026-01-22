@@ -273,8 +273,14 @@ class CoyoteDevice(OutputDevice, QObject):
                 logger.warning(f"{LOG_PREFIX} Malformed active power notification: {list(data)}")
                 return
 
-            power_a = data[2]
-            power_b = data[3]
+            # Track if this is the absolute first CMD_ACTIVE_POWER after connection
+            if not hasattr(self, '_first_active_power_seen') or not self._first_active_power_seen:
+                power_a = 0
+                power_b = 0
+                self._first_active_power_seen = True
+            else:
+                power_a = data[2]
+                power_b = data[3]
 
             logger.info(f"{LOG_PREFIX} Active power update - Channel A: {power_a}, Channel B: {power_b}")
 
