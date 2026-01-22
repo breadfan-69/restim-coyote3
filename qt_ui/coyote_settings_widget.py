@@ -295,7 +295,7 @@ class ChannelControl:
         graph_column = QVBoxLayout()
         graph_column.addWidget(self.pulse_graph)
 
-        self.stats_label = QLabel("Intensity: 0%\nFrequency: 0 Hz")
+        self.stats_label = QLabel("Intensity: 0%")
         self.stats_label.setAlignment(Qt.AlignHCenter)
         self.pulse_graph.attach_stats_label(self.stats_label)
         graph_column.addWidget(self.stats_label)
@@ -447,7 +447,7 @@ class PulseGraphContainer(QWidget):
 
     def attach_stats_label(self, label: QLabel):
         self.stats_label = label
-        self.stats_label.setText("Intensity: 0%\nFrequency: 0 Hz")
+        self.stats_label.setText("Intensity: 0%")
         
     def get_frequency_range_text(self, entries) -> str:
         """Get the frequency range text from the given entries."""
@@ -487,19 +487,13 @@ class PulseGraphContainer(QWidget):
     def update_label_text(self):
         # Clean up old entries
         self.clean_old_entries()
-        
         # Calculate stats using pulses from the time window
         recent_entries = self.entries
-        
-        # Get frequency range text
-        freq_text = self.get_frequency_range_text(recent_entries)
-        
         # Get intensity range
         intensities = [entry.intensity for entry in recent_entries]
         intensity_text = self.format_intensity_text(intensities)
-
         if self.stats_label:
-            self.stats_label.setText(f"Intensity: {intensity_text}\nFrequency: {freq_text}")
+            self.stats_label.setText(f"Intensity: {intensity_text}")
 
     def add_pulse(self, frequency, intensity, duration, current_strength, channel_limit):
         # Calculate effective intensity after applying current strength

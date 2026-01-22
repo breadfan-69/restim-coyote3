@@ -351,7 +351,7 @@ class AlgorithmFactory:
             pulse_freq_limits=pulse_freq_limits,
             pulse_width_limits=pulse_width_limits,
             pulse_rise_time_limits=pulse_rise_time_limits,
-            is_three_phase=not self.mainwindow.wizard.page_coyote_waveform_select.is_three_phase()
+            is_three_phase=self.mainwindow.wizard.page_coyote_waveform_select.is_three_phase()
         )
         return algorithm
 
