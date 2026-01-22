@@ -129,6 +129,8 @@ class CoyoteDevice(OutputDevice, QObject):
                         if len(services) > 0:
                             logger.info(f"{LOG_PREFIX} Services discovered ({len(services)}), waiting for characteristics to load...")
                             await asyncio.sleep(0.5)  # Wait for characteristics to fully load
+                            # Send initial power levels 0,0 after service discovery
+                            await self._send_initial_power_zero()
                             self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
                         else:
                             logger.error(f"{LOG_PREFIX} Service discovery failed")
