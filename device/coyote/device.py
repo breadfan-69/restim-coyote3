@@ -25,7 +25,7 @@ from device.coyote.constants import (
     SCAN_RETRY_SECONDS,
 )
 from device.coyote.types import CoyoteParams, CoyotePulse, CoyotePulses, CoyoteStrengths, ConnectionStage
-from device.coyote.algorithm import CoyoteAlgorithm
+from device.coyote.algorithm import CoyoteAlgorithm, CoyoteDigletAlgorithm
 
 logger = logging.getLogger('restim.coyote')
 
@@ -113,6 +113,8 @@ class CoyoteDevice(OutputDevice, QObject):
                 elif self.connection_stage == ConnectionStage.CONNECTING:
                     try:
                         await self.client.connect()
+                        # Send initial power levels 0,0 immediately after connection
+                        await self._send_initial_power_zero()
                         logger.info(f"{LOG_PREFIX} Connected, discovering services...")
                         self.connection_stage = ConnectionStage.SERVICE_DISCOVERY
                     except Exception as e:
@@ -195,6 +197,11 @@ class CoyoteDevice(OutputDevice, QObject):
                 
             # Small delay between iterations
             await asyncio.sleep(0.1)
+
+    async def _send_initial_power_zero(self):
+        """Send initial power levels 0,0 to the device after Bleak connection."""
+        strengths = CoyoteStrengths(channel_a=0, channel_b=0)
+        await self.send_command(strengths=strengths)
 
     def start_updates(self, algorithm: Optional[any]):
         logger.info(f"{LOG_PREFIX} start_updates called")
