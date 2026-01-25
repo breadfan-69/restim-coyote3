@@ -8,6 +8,9 @@ class WizardPageDeviceType(QWizardPage, Ui_WizardPageDeviceType):
         super().__init__(parent)
         self.setupUi(self)
 
+        # Pre-select Coyote as default device
+        self.coyote_radio.setChecked(True)
+
         self.audio_based_radio.toggled.connect(self.completeChanged)
         self.focstim_radio.toggled.connect(self.completeChanged)
         self.neostim_radio.toggled.connect(self.completeChanged)
