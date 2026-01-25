@@ -3,9 +3,9 @@
 
 a = Analysis(
     ['restim.py'],
-    pathex=['.'],
+    pathex=[],
     binaries=[],
-    datas=[('resources/phase diagram bg.svg', 'resources/'), ('resources/favicon.png', 'resources/')],
+    datas=[('resources', 'resources')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -30,9 +30,6 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
- upx_exclude=[],
-    runtime_tmpdir=None,
-    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
