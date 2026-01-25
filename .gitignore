@@ -5,7 +5,8 @@ __pycache__/
 
 # Runtime configuration files
 restim.ini
-dist-onefile/restim.ini
+dist-onefile/
+dist/
 
 # C extensions
 *.so
