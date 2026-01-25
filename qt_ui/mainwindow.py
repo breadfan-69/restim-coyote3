@@ -224,6 +224,13 @@ class Window(QMainWindow, Ui_MainWindow):
         # self.actionDevice.setIcon(QIcon(self.iconDevice))
 
         self.connect_signals_slots_actionbar()
+        
+        # Add Coyote mode label in status bar (only visible for Coyote devices)
+        from PySide6.QtWidgets import QLabel
+        self.coyote_mode_label = QLabel("Mode: Two-Channel")
+        self.coyote_mode_label.setStyleSheet("color: #8B3A3A; font-weight: bold; padding: 5px 15px;")
+        self.statusBar().addPermanentWidget(self.coyote_mode_label)
+        self.coyote_mode_label.hide()  # Hidden by default, shown only for Coyote devices
 
         self.refresh_device_type()
 
@@ -338,17 +345,13 @@ class Window(QMainWindow, Ui_MainWindow):
         # coyote tab - disable pulse_frequency spinboxes if funscript is controlling them
         # Only do this if we have a coyote device and it has a device reference
         if hasattr(self, 'tab_coyote') and self.tab_coyote.device is not None:
-            has_pulse_frequency_funscript = algorithm_factory.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY) is not None
+            # Only link pulse_frequency from funscript if media player is external (not internal)
+            has_pulse_frequency_funscript = (not self.page_media.is_internal() and 
+                                            algorithm_factory.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY) is not None)
             self.tab_coyote.set_pulse_frequency_from_funscript(has_pulse_frequency_funscript)
             
-            # Link per-channel pulse_frequency controllers
-            coyote_ch_a_freq_controller = self.tab_coyote.get_channel_a_pulse_frequency_controller()
-            if coyote_ch_a_freq_controller:
-                coyote_ch_a_freq_controller.link_axis(algorithm_factory.get_axis_coyote_channel_a_pulse_frequency())
-            
-            coyote_ch_b_freq_controller = self.tab_coyote.get_channel_b_pulse_frequency_controller()
-            if coyote_ch_b_freq_controller:
-                coyote_ch_b_freq_controller.link_axis(algorithm_factory.get_axis_coyote_channel_b_pulse_frequency())
+            # NOTE: Per-channel pulse_frequency controllers are already linked in coyote_settings_widget.py
+            # Do NOT re-link them here as it would override the DynamicSpinboxAxis setup
 
         # vibration tab
         self.tab_vibrate.vib1_enabled_controller.link_axis(algorithm_factory.get_axis_vib1_enabled())
@@ -453,6 +456,12 @@ class Window(QMainWindow, Ui_MainWindow):
             )
         
         if config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
+            # Show Coyote mode label
+            mode_name = "Three-Phase" if config.device_type == DeviceType.COYOTE_THREE_PHASE else "Two-Channel"
+            self.coyote_mode_label.setText(f"Mode: {mode_name}")
+            self.coyote_mode_label.show()
+            logger.info(f"Coyote mode label shown: {mode_name}")
+            
             # Only disconnect if switching to a device type that is NOT 8 or 9
             prev_type = None
             if self.output_device and isinstance(self.output_device, CoyoteDevice):
@@ -481,6 +490,9 @@ class Window(QMainWindow, Ui_MainWindow):
                     channel_b_intensity_balance=qt_ui.settings.coyote_channel_b_intensity_balance.get()
                 )
                 self.tab_coyote.setup_device(self.output_device)
+        else:
+            # Hide Coyote mode label for non-Coyote devices
+            self.coyote_mode_label.hide()
 
         self.refresh_pattern_combobox()
 

@@ -84,25 +84,47 @@ class PulseGenerator:
 
     def create_pulse(self, time_s: float, intensity: int, sequence_index: int) -> Tuple[CoyotePulse, PulseDebug]:
 
-        # Use requested pulse frequency directly
+        # Determine if using funscript or spinbox by checking axis type
+        # WriteProtectedAxis = funscript, DynamicSpinboxAxis = internal spinbox
+        from stim_math.axis import WriteProtectedAxis
+        using_funscript = (self.channel_params.pulse_frequency is not None and 
+                          isinstance(self.channel_params.pulse_frequency, WriteProtectedAxis))
+        
+        # Get the raw value (0-100 for funscript, or frequency in Hz for spinbox)
+        # Always use channel_params.pulse_frequency if available (for both funscript and internal spinbox)
+        # Fall back to params.pulse_frequency only if channel-specific is not set
         if self.channel_params.pulse_frequency is not None:
-            requested_frequency = float(self.channel_params.pulse_frequency.interpolate(time_s))
+            raw_value = float(self.channel_params.pulse_frequency.interpolate(time_s))
         else:
-            requested_frequency = float(self.params.pulse_frequency.interpolate(time_s))
+            raw_value = float(self.params.pulse_frequency.interpolate(time_s))
 
-        # Clamp frequency to avoid division by zero and respect duration limits
+        # Get min/max frequency from channel config (in Hz)
+        user_freq_min = self.channel_params.minimum_frequency.get()
+        user_freq_max = self.channel_params.maximum_frequency.get()
+        
+        # Map to frequency (Hz)
+        if using_funscript:
+            # Funscript values: 0-100 → normalize to 0-1 → map to [user_freq_min, user_freq_max] Hz
+            normalized = raw_value / 100.0
+            requested_frequency = user_freq_min + (normalized * (user_freq_max - user_freq_min))
+        else:
+            # Internal media player: spinbox provides frequency in Hz, clamp to [user_freq_min, user_freq_max]
+            requested_frequency = clamp(raw_value, user_freq_min, user_freq_max)
+
+        # Clamp to hardware limits (5-240ms = 4.17-200 Hz)
         requested_frequency = max(1, requested_frequency)
         base_duration = 1000.0 / requested_frequency
         base_duration = clamp(base_duration, MIN_PULSE_DURATION_MS, MAX_PULSE_DURATION_MS)
-        final_frequency = int(max(1, round(1000.0 / base_duration)))
+        # Convert duration back to frequency for display
+        display_frequency = int(max(1, round(1000.0 / base_duration)))
         final_intensity = int(clamp(intensity, 0, 100))
 
         debug = PulseDebug(
             sequence_index=sequence_index,
-            raw_frequency_hz=requested_frequency,
+            raw_frequency_hz=display_frequency,
             normalised_frequency=1.0,
-            mapped_frequency_hz=requested_frequency,
-            frequency_limits=(1, 1000),
+            mapped_frequency_hz=display_frequency,
+            frequency_limits=(user_freq_min, user_freq_max),
             base_duration_ms=base_duration,
             duration_limits=(MIN_PULSE_DURATION_MS, MAX_PULSE_DURATION_MS),
             jitter_fraction=0.0,
@@ -116,7 +138,7 @@ class PulseGenerator:
             residual_ms=0.0,
         )
 
-        return CoyotePulse(duration=int(base_duration), intensity=final_intensity, frequency=final_frequency), debug
+        return CoyotePulse(duration=int(base_duration), intensity=final_intensity, frequency=display_frequency), debug
 
     def _channel_frequency_window(self) -> Tuple[float, float]:
         minimum = max(float(self.channel_params.minimum_frequency.get()), HARDWARE_MIN_FREQ_HZ)

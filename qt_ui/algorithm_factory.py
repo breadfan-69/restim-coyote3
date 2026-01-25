@@ -1,5 +1,6 @@
 from __future__ import annotations  # multiple return values
 import numpy as np
+import collections.abc
 
 from device.focstim.fourphase_algorithm import FOCStimFourphaseAlgorithm
 from device.neostim.algorithm import NeoStimAlgorithm
@@ -14,7 +15,7 @@ from stim_math.audio_gen.params import *
 from qt_ui.models.funscript_kit import FunscriptKitModel
 from qt_ui.models.script_mapping import ScriptMappingModel
 from qt_ui.device_wizard.axes import AxisEnum
-from stim_math.axis import create_precomputed_axis, AbstractTimestampMapper, create_constant_axis, AbstractMediaSync
+from stim_math.axis import create_precomputed_axis, AbstractTimestampMapper, create_constant_axis, AbstractMediaSync, AbstractAxis
 
 
 class AlgorithmFactory:
@@ -411,6 +412,7 @@ class AlgorithmFactory:
 
     def get_axis_coyote_channel_a_pulse_frequency(self):
         # For Coyote, use funscript if available, otherwise use channel A spinbox
+        # Note: Frequency mapping from [0, 100] to [freq_min, freq_max] is handled in pulse_generator.create_pulse()
         funscript_freq = self.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY)
         if funscript_freq:
             return funscript_freq
@@ -419,6 +421,7 @@ class AlgorithmFactory:
 
     def get_axis_coyote_channel_b_pulse_frequency(self):
         # For Coyote, use funscript if available, otherwise use channel B spinbox
+        # Note: Frequency mapping from [0, 100] to [freq_min, freq_max] is handled in pulse_generator.create_pulse()
         funscript_freq = self.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY)
         if funscript_freq:
             return funscript_freq

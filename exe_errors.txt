@@ -1,0 +1,123 @@
+qt.svg: Cannot open file ':/restim/activity-1_poly.svg', because: No such file or directory
+Refreshed patterns: 17 patterns loaded
+  - Mouse
+  - Circle
+  - Butterfly Curve
+  - Deep Throb
+  - Figure 8
+  - Jerky Stroke
+  - Lightning Strike
+  - Micro Circles
+  - Orbiting Circles
+  - Random Walk
+  - Rose Curve
+  - Spirograph
+  - Tremor Circle
+  - Tri-Phase panning (\u1d12)
+  - Tri-Phase panning (\u2227)
+  - Vertical Oscillation
+  - W Shape
+websocket server active at localhost:12346
+TCP server active at localhost:12347
+UDP server active at localhost:12347
+Unable to listen to serial port: The system cannot find the file specified.
+[Coyote] Starting asyncio loop thread
+[Coyote] Starting connection loop
+[Coyote] Starting connection process
+[Coyote] Scanning for device: 47L121000
+[Coyote] Stopping updates
+load config DeviceConfiguration(device_type=<DeviceType.COYOTE_THREE_PHASE: 8>, waveform_type=<WaveformType.PULSE_BASED: 2>, min_frequency=4.0, max_frequency=200.0, waveform_amplitude_amps=0.0)
+saving config DeviceConfiguration(device_type=<DeviceType.AUDIO_THREE_PHASE: 1>, waveform_type=<WaveformType.PULSE_BASED: 2>, min_frequency=4.0, max_frequency=200.0, waveform_amplitude_amps=0.01)
+funscript mapping changed, re-linking scripts.
+[Coyote] Stopping updates
+Refreshed patterns: 17 patterns loaded
+  - Mouse
+  - Circle
+  - Butterfly Curve
+  - Deep Throb
+  - Figure 8
+  - Jerky Stroke
+  - Lightning Strike
+  - Micro Circles
+  - Orbiting Circles
+  - Random Walk
+  - Rose Curve
+  - Spirograph
+  - Tremor Circle
+  - Tri-Phase panning (\u1d12)
+  - Tri-Phase panning (\u2227)
+  - Vertical Oscillation
+  - W Shape
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 1); retrying...
+Selected audio device: MME, LG TV (NVIDIA High Definition A, high, 44100.0
+attempting to open audio device with 2 channels.
+Portaudio says: Success!
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 2); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 3); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 4); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 5); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 6); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 7); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 8); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 9); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 10); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 11); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 12); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 13); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 14); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 15); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 16); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 17); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 18); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 19); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 20); retrying...
+[Coyote] Scanning for device: 47L121000
+[Coyote] Device 47L121000 not found. Check device is powered on and Bluetooth may need to be toggled.
+[Coyote] Device not found (attempt 21); retrying...
+[Coyote] Scanning for device: 47L121000
+Exception occurred
+Traceback (most recent call last):
+  File "qt_ui\patterns\threephase_patterns.py", line 98, in timeout
+    def timeout(self):
+    
+KeyboardInterrupt
+Shutting down

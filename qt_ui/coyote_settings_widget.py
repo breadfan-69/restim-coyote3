@@ -161,7 +161,14 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
     def set_pulse_frequency_from_funscript(self, enabled: bool):
         """Enable/disable pulse_frequency spinboxes based on funscript availability"""
         for control in self.channel_controls.values():
-            control.set_pulse_frequency_enabled(not enabled)
+            if enabled:
+                # Funscript loaded: disable spinbox, ensure range is set
+                control.set_pulse_frequency_enabled(False)
+                control.update_pulse_freq_limits()  # Ensure range is correct
+            else:
+                # No funscript: enable spinbox for user control
+                control.set_pulse_frequency_enabled(True)
+                control.update_pulse_freq_limits()  # Ensure range is correct
 
     def get_pulse_frequency_controller(self, channel_id: str) -> Optional[AxisController]:
         """Get the pulse_frequency axis controller for a specific channel"""
@@ -186,23 +193,40 @@ class ChannelConfig:
 class ChannelControl:
 
     def update_pulse_freq_limits(self):
-        if self.freq_min and self.freq_max and self.pulse_frequency:
-            min_val = self.freq_min.value()
-            max_val = self.freq_max.value()
-            self.pulse_frequency.setRange(min_val, max_val)
-            # Clamp current value if out of range
-            if self.pulse_frequency.value() < min_val:
-                self.pulse_frequency.setValue(min_val)
-            elif self.pulse_frequency.value() > max_val:
-                self.pulse_frequency.setValue(max_val)
+        if self.pulse_min and self.pulse_max and self.pulse_duration:
+            min_val = self.pulse_min.value()
+            max_val = self.pulse_max.value()
+            # Ensure min <= max
+            actual_min = min(min_val, max_val)
+            actual_max = max(min_val, max_val)
+            
+            # Update spinbox range based on mode
+            if not self.pulse_duration.isEnabled():
+                # Funscript mode: full hardware range to allow mapped values to display
+                self.pulse_duration.blockSignals(True)
+                self.pulse_duration.setRange(4, 200)
+                self.pulse_duration.blockSignals(False)
+            else:
+                # Internal player mode: constrain range to [freq_min, freq_max]
+                # Only setValue if the current value would be clamped by the new range
+                current_value = self.pulse_duration.value()
+                clamped_value = max(actual_min, min(current_value, actual_max))
+                
+                self.pulse_duration.blockSignals(True)
+                # First, always update the range
+                self.pulse_duration.setRange(actual_min, actual_max)
+                # Then, only setValue if it was clamped (needs to change)
+                if clamped_value != current_value:
+                    self.pulse_duration.setValue(clamped_value)
+                self.pulse_duration.blockSignals(False)
 
     def __init__(self, parent: 'CoyoteSettingsWidget', config: ChannelConfig):
         self.parent = parent
         self.config = config
 
-        self.freq_min: Optional[QSpinBox] = None
-        self.freq_max: Optional[QSpinBox] = None
-        self.pulse_frequency: Optional[QSpinBox] = None
+        self.pulse_min: Optional[QSpinBox] = None
+        self.pulse_max: Optional[QSpinBox] = None
+        self.pulse_duration: Optional[QSpinBox] = None
         self.pulse_frequency_controller: Optional[AxisController] = None
         self.strength_max: Optional[QSpinBox] = None
         self.volume_slider: Optional[QSlider] = None
@@ -228,30 +252,30 @@ class ChannelControl:
         # Create a group box for freq and strength controls
         freq_strength_group = QtWidgets.QGroupBox("Max/Min")
         freq_strength_group.setCheckable(True)
-        freq_strength_group.setChecked(True)
+        freq_strength_group.setChecked(False)
         freq_strength_layout = QVBoxLayout()
 
-        freq_min_layout = QHBoxLayout()
-        self.freq_min = QSpinBox()
-        self.freq_min.setRange(4, 500)
-        self.freq_min.setSingleStep(10)
-        self.freq_min.setValue(self.config.freq_min_setting.get())
-        self.freq_min.valueChanged.connect(self.on_freq_min_changed)
-        self.freq_min.valueChanged.connect(self.update_pulse_freq_limits)
-        freq_min_layout.addWidget(QLabel("Min Freq (Hz)"))
-        freq_min_layout.addWidget(self.freq_min)
-        freq_strength_layout.addLayout(freq_min_layout)
+        pulse_min_layout = QHBoxLayout()
+        self.pulse_min = QSpinBox()
+        self.pulse_min.setRange(4, 200)
+        self.pulse_min.setSingleStep(10)
+        self.pulse_min.setValue(self.config.freq_min_setting.get())
+        self.pulse_min.valueChanged.connect(self.on_pulse_min_changed)
+        self.pulse_min.valueChanged.connect(self.update_pulse_freq_limits)
+        pulse_min_layout.addWidget(QLabel("Min Freq (Hz)"))
+        pulse_min_layout.addWidget(self.pulse_min)
+        freq_strength_layout.addLayout(pulse_min_layout)
 
-        freq_max_layout = QHBoxLayout()
-        self.freq_max = QSpinBox()
-        self.freq_max.setRange(4, 200)
-        self.freq_max.setSingleStep(10)
-        self.freq_max.setValue(self.config.freq_max_setting.get())
-        self.freq_max.valueChanged.connect(self.on_freq_max_changed)
-        self.freq_max.valueChanged.connect(self.update_pulse_freq_limits)
-        freq_max_layout.addWidget(QLabel("Max Freq (Hz)"))
-        freq_max_layout.addWidget(self.freq_max)
-        freq_strength_layout.addLayout(freq_max_layout)
+        pulse_max_layout = QHBoxLayout()
+        self.pulse_max = QSpinBox()
+        self.pulse_max.setRange(4, 200)
+        self.pulse_max.setSingleStep(10)
+        self.pulse_max.setValue(self.config.freq_max_setting.get())
+        self.pulse_max.valueChanged.connect(self.on_pulse_max_changed)
+        self.pulse_max.valueChanged.connect(self.update_pulse_freq_limits)
+        pulse_max_layout.addWidget(QLabel("Max Freq (Hz)"))
+        pulse_max_layout.addWidget(self.pulse_max)
+        freq_strength_layout.addLayout(pulse_max_layout)
 
         strength_layout = QHBoxLayout()
         strength_layout.addWidget(QLabel("Max Strength"))
@@ -268,28 +292,36 @@ class ChannelControl:
 
         # Enable/disable mouse interaction based on group box checkbox
         def set_mouse_interaction(enabled):
-            self.freq_min.setEnabled(enabled)
-            self.freq_max.setEnabled(enabled)
+            self.pulse_min.setEnabled(enabled)
+            self.pulse_max.setEnabled(enabled)
             self.strength_max.setEnabled(enabled)
         freq_strength_group.toggled.connect(set_mouse_interaction)
         set_mouse_interaction(True)
 
-        pulse_freq_layout = QHBoxLayout()
-        self.pulse_frequency = QSpinBox()
-        self.pulse_frequency.setRange(4, 200)
-        self.pulse_frequency.setSingleStep(1)
-        self.pulse_frequency.setValue(50)
-        pulse_freq_layout.addWidget(QLabel("Pulse Freq (Hz)"))
-        pulse_freq_layout.addWidget(self.pulse_frequency)
-        left.addLayout(pulse_freq_layout)
+        pulse_duration_layout = QHBoxLayout()
+        self.pulse_duration = QSpinBox()
+        # Initialize with the configured freq_min/freq_max range (will be [4,200] if not set)
+        freq_min = self.config.freq_min_setting.get()
+        freq_max = self.config.freq_max_setting.get()
+        self.pulse_duration.setRange(freq_min, freq_max)
+        self.pulse_duration.setSingleStep(1)
+        # Set initial value, clamped to the range
+        initial_value = max(freq_min, min(50, freq_max))
+        self.pulse_duration.setValue(initial_value)
+        pulse_duration_layout.addWidget(QLabel("Pulse Freq (Hz)"))
+        pulse_duration_layout.addWidget(self.pulse_duration)
+        left.addLayout(pulse_duration_layout)
 
-        # Create axis controller for this channel's pulse_frequency
-        self.pulse_frequency_controller = AxisController(self.pulse_frequency)
-        self.pulse_frequency_controller.link_to_internal_axis(create_constant_axis(self.pulse_frequency.value()))
+        # Create axis controller for this channel's pulse_duration
+        self.pulse_frequency_controller = AxisController(self.pulse_duration)
+        # Link to an axis that reads the current spinbox value dynamically
+        self.pulse_frequency_controller.link_to_internal_axis(
+            self.create_pulse_duration_axis()
+        )
 
         group_layout.addLayout(left)
 
-        self.pulse_graph = PulseGraphContainer(self.parent.graph_window, self.freq_min, self.freq_max)
+        self.pulse_graph = PulseGraphContainer(self.parent.graph_window, self.pulse_min, self.pulse_max)
         self.pulse_graph.plot.setMinimumHeight(100)
 
         graph_column = QVBoxLayout()
@@ -343,6 +375,23 @@ class ChannelControl:
             return
         self.handle_pulses(channel_pulses, self.select_strength(strengths))
 
+    def create_pulse_duration_axis(self):
+        """Create a dynamic axis that reads the current pulse_duration spinbox value."""
+        class DynamicSpinboxAxis:
+            """An axis that dynamically reads from a spinbox."""
+            def __init__(self, spinbox):
+                self.spinbox = spinbox
+            
+            def interpolate(self, time_s):
+                """Always return the current spinbox value."""
+                return float(self.spinbox.value())
+            
+            def add(self, value, interval=0.0):
+                """No-op for dynamic axis."""
+                pass
+        
+        return DynamicSpinboxAxis(self.pulse_duration)
+
     def on_volume_changed(self, value: int):
         self.update_volume_label(value)
         self.parent.update_channel_strength(self, value)
@@ -360,9 +409,9 @@ class ChannelControl:
         self.volume_slider.blockSignals(False)
 
     def set_pulse_frequency_enabled(self, enabled: bool):
-        """Enable or disable the pulse frequency spinbox"""
-        if self.pulse_frequency:
-            self.pulse_frequency.setEnabled(enabled)
+        """Enable or disable the pulse duration spinbox"""
+        if self.pulse_duration:
+            self.pulse_duration.setEnabled(enabled)
         # Update the label with current slider value
         if self.volume_slider:
             self.update_volume_label(self.volume_slider.value())
@@ -382,31 +431,33 @@ class ChannelControl:
 
         self.parent.update_channel_strength(self, current_value)
 
-    def on_freq_min_changed(self, value: int):
-        if self.freq_min is None or self.freq_max is None:
+    def on_pulse_min_changed(self, value: int):
+        if self.pulse_min is None or self.pulse_max is None:
             return
 
         corrected = value
-        if value >= self.freq_max.value():
-            corrected = max(self.freq_max.value() - self.freq_min.singleStep(), self.freq_min.minimum())
+        if value >= self.pulse_max.value():
+            corrected = max(self.pulse_max.value() - self.pulse_min.singleStep(), self.pulse_min.minimum())
         if corrected != value:
-            self.freq_min.blockSignals(True)
-            self.freq_min.setValue(corrected)
-            self.freq_min.blockSignals(False)
+            self.pulse_min.blockSignals(True)
+            self.pulse_min.setValue(corrected)
+            self.pulse_min.blockSignals(False)
         self.config.freq_min_setting.set(corrected)
+        self.update_pulse_freq_limits()
 
-    def on_freq_max_changed(self, value: int):
-        if self.freq_min is None or self.freq_max is None:
+    def on_pulse_max_changed(self, value: int):
+        if self.pulse_min is None or self.pulse_max is None:
             return
 
         corrected = value
-        if value <= self.freq_min.value():
-            corrected = min(self.freq_min.value() + self.freq_max.singleStep(), self.freq_max.maximum())
+        if value <= self.pulse_min.value():
+            corrected = min(self.pulse_min.value() + self.pulse_max.singleStep(), self.pulse_max.maximum())
         if corrected != value:
-            self.freq_max.blockSignals(True)
-            self.freq_max.setValue(corrected)
-            self.freq_max.blockSignals(False)
+            self.pulse_max.blockSignals(True)
+            self.pulse_max.setValue(corrected)
+            self.pulse_max.blockSignals(False)
         self.config.freq_max_setting.set(corrected)
+        self.update_pulse_freq_limits()
 
     def handle_pulses(self, pulses: list[CoyotePulse], strength: int):
         if not self.pulse_graph or not pulses:
@@ -421,6 +472,17 @@ class ChannelControl:
                 current_strength=strength,
                 channel_limit=channel_limit,
             )
+            # Update the pulse_duration spinbox to show current frequency (Hz)
+            # Only update if spinbox is disabled (funscript mode)
+            if self.pulse_duration and not self.pulse_duration.isEnabled():
+                self.pulse_duration.blockSignals(True)
+                # Clamp to current range to avoid pinning at boundaries
+                clamped_value = max(self.pulse_duration.minimum(), 
+                                   min(pulse.frequency, self.pulse_duration.maximum()))
+                self.pulse_duration.setValue(clamped_value)
+                self.pulse_duration.blockSignals(False)
+                # Force visual update even if spinbox is disabled
+                self.pulse_duration.repaint()
 
 class PulseGraphContainer(QWidget):
     def __init__(self, window_seconds: settings.Setting, freq_min: QSpinBox, freq_max: QSpinBox, *args, **kwargs):
