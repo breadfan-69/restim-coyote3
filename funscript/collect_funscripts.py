@@ -53,12 +53,13 @@ def collect_funscripts(
         media: str
 ) -> list[Resource]:
     """
-    Search the directories in order for funscripts. Stop searching when at least one funscript is found in a directly.
+    Search the directories in order for funscripts. Stop searching when at least one funscript is found in a directory.
     If a directory is found with the same name as the media, search that directory too.
-    zipfiles are supported.
-    :param dirs:
-    :param media:
-    :return:
+    Recursively searches subdirectories by default.
+    Zipfiles are supported.
+    :param dirs: list of directory paths to search
+    :param media: media filename to match
+    :return: list of Resource objects
     """
     def path_is_zip(path):
         try:
@@ -89,18 +90,23 @@ def collect_funscripts(
 
             for node in traversable.iterdir():
                 full_path = os.path.join(current_dir, node.name)
-                if not traversing_a_zip and node.is_dir(): # do not support dir-in-zip
+                if not traversing_a_zip and node.is_dir():  # do not support dir-in-zip
                     if case_insensitive_compare(node.name, media_prefix):
+                        # Found matching directory, add to search
+                        new_dirs.append(full_path)
+                    else:
+                        # Add all subdirectories for recursive search
                         new_dirs.append(full_path)
                 else:
                     a, b, c = split_funscript_path(full_path)
                     if case_insensitive_compare(a, media_prefix):
-                        if not traversing_a_zip and zipfile.is_zipfile(full_path):    # do not support zip-in-zip
+                        if not traversing_a_zip and zipfile.is_zipfile(full_path):  # do not support zip-in-zip
                             new_dirs.append(full_path)
                         elif case_insensitive_compare(c, 'funscript'):
                             collected_files.append(Resource(node))
 
-        except OSError as e:    # unreachable network?
+        except OSError as e:  # unreachable network or permission denied
+            logger.warning(f'Error accessing directory: {e}')
             pass
 
         # make sure to search dirs before zipfiles
@@ -108,7 +114,5 @@ def collect_funscripts(
         new_dirs = list(filter(lambda x: not path_is_zip(x), new_dirs))
         dir_stack = new_dirs + new_zips + dir_stack
         new_dirs = []
-
-
 
     return collected_files
