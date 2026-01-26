@@ -103,6 +103,9 @@ class Window(QMainWindow, Ui_MainWindow):
         self.doubleSpinBox_volume.setValue(qt_ui.settings.volume_default_level.get())
         self.tab_volume.link_volume_controls(self.doubleSpinBox_volume, self.progressBar_volume)
 
+        # Initialize funscript offset widget (lazy loaded)
+        self.funscript_offset_container = None
+
         # default alpha/beta axis. Used by:
         # pattern generator
         # network stuff (intiface, tcode)
@@ -189,6 +192,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.page_media.dialogOpened.connect(self.signal_stop)
         self.page_media.funscriptMappingChanged.connect(self.funscript_mapping_changed)
         self.page_media.connectionStatusChanged.connect(self.media_connection_status_changed)
+        self.page_media.mediaPlayerSourceChanged.connect(self._on_media_player_source_changed)
         self.page_media.bake_audio_button.clicked.connect(self.open_write_audio_dialog)
 
         # trigger updates.... maybe not all needed?
@@ -794,6 +798,88 @@ class Window(QMainWindow, Ui_MainWindow):
             self.output_device.stop()
         self.save_settings()
         event.accept()
+
+    def _on_media_player_source_changed(self):
+        """Handle media player source changes - update offset widget visibility"""
+        self._update_funscript_offset_visibility()
+
+    def _update_funscript_offset_visibility(self):
+        """Show/hide funscript offset widget based on media player type (internal/external)"""
+        if not self.page_media.is_internal():
+            # External media player - create widget if needed and show it
+            if self.funscript_offset_container is None:
+                self._create_funscript_offset_widget()
+            self.funscript_offset_container.setVisible(True)
+        else:
+            # Internal media player - hide offset widget
+            if self.funscript_offset_container is not None:
+                self.funscript_offset_container.setVisible(False)
+
+    def _create_funscript_offset_widget(self):
+        """Create and configure the funscript offset widget"""
+        from PySide6.QtWidgets import QGroupBox, QDoubleSpinBox, QVBoxLayout
+        
+        self.funscript_offset_container = QGroupBox("Offset (s)")
+        layout = QVBoxLayout()
+        layout.setContentsMargins(4, 4, 4, 4)
+        
+        self.funscript_offset_spinbox = QDoubleSpinBox()
+        self.funscript_offset_spinbox.setRange(-1.0, 1.0)
+        self.funscript_offset_spinbox.setSingleStep(0.0125)
+        self.funscript_offset_spinbox.setDecimals(4)
+        self.funscript_offset_spinbox.setValue(qt_ui.settings.media_sync_funscript_offset.get())
+        self.funscript_offset_spinbox.setToolTip("Adjust funscript sync offset (±1.0 seconds)")
+        self.funscript_offset_spinbox.valueChanged.connect(self._on_funscript_offset_changed)
+        
+        layout.addWidget(self.funscript_offset_spinbox)
+        self.funscript_offset_container.setLayout(layout)
+        
+        # Add to toolbar right after Media button
+        # Find the index of actionMedia and insert the widget right after it
+        actions = self.toolBar.actions()
+        media_index = actions.index(self.actionMedia) if self.actionMedia in actions else -1
+        if media_index >= 0 and media_index < len(actions) - 1:
+            # Insert before the next action after Media
+            self.toolBar.insertWidget(actions[media_index + 1], self.funscript_offset_container)
+        else:
+            # Fallback: insert before the first separator or action we encounter after Media
+            self.toolBar.insertWidget(self.actionStart, self.funscript_offset_container)
+        
+        # Apply current theme
+        self._apply_funscript_offset_theme()
+
+    def _apply_funscript_offset_theme(self):
+        """Apply light/dark mode theming to offset widget"""
+        if self.funscript_offset_container is None:
+            return
+        
+        palette = self.palette()
+        bg_color = palette.color(self.backgroundRole())
+        text_color = palette.color(self.foregroundRole())
+        
+        stylesheet = f"""
+            QGroupBox {{
+                color: {text_color.name()};
+                border: 1px solid {text_color.name()};
+                border-radius: 3px;
+                margin-top: 0.5em;
+                padding-top: 0.5em;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px 0 3px;
+            }}
+            QDoubleSpinBox {{
+                background-color: {bg_color.name()};
+                color: {text_color.name()};
+            }}
+        """
+        self.funscript_offset_container.setStyleSheet(stylesheet)
+
+    def _on_funscript_offset_changed(self, value: float):
+        """Handle funscript offset spinbox value changes"""
+        qt_ui.settings.media_sync_funscript_offset.set(value)
 
 
 def run():
