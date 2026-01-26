@@ -9,6 +9,10 @@
     <file>media_players/kodi.png</file>
     <file>media_players/heresphere.png</file>
     <file>arrow-round_poly.svg</file>
+    <file>arrow-up.svg</file>
+    <file>arrow-down.svg</file>
+    <file>arrow-up-light.svg</file>
+    <file>arrow-down-light.svg</file>
     <file>trash.svg</file>
     <file>pause-circle_poly.svg</file>
     <file>play-circle_poly.svg</file>
@@ -21,5 +25,13 @@
     <file>play_poly.svg</file>
     <file>plug-1_poly.svg</file>
     <file>sliders_poly.svg</file>
+    <file>icons/coyote.png</file>
+    <file>icons/walnut.png</file>
+    <file>icons/cherries.png</file>
+    <file>icons/banana.png</file>
+    <file>checkbox-checked.svg</file>
+    <file>checkbox-unchecked.svg</file>
+    <file>checkbox-checked-dark.svg</file>
+    <file>checkbox-unchecked-dark.svg</file>
   </qresource>
 </RCC>

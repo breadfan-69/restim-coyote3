@@ -1,0 +1,61 @@
+Traceback (most recent call last):
+  File "restim.py", line 3, in <module>
+    from qt_ui import mainwindow
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "qt_ui\mainwindow.py", line 21, in <module>
+    from qt_ui.main_window_ui import Ui_MainWindow
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "qt_ui\main_window_ui.py", line 31, in <module>
+    from qt_ui.sensors_widget import SensorsWidget
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "qt_ui\sensors_widget.py", line 22, in <module>
+    from qt_ui.sensors.as5311_absolute_node import AS5311AbsoluteSensorNode
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "qt_ui\sensors\as5311_absolute_node.py", line 8, in <module>
+    from stim_math.sensors.as5311 import AS5311Data
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "stim_math\sensors\as5311.py", line 4, in <module>
+    from stim_math.sensors.imu import HighPass
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "stim_math\sensors\imu.py", line 5, in <module>
+    from ahrs import Quaternion
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "ahrs\__init__.py", line 12, in <module>
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "ahrs\filters\__init__.py", line 13, in <module>
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+  File "pyimod02_importers.py", line 457, in exec_module
+  File "ahrs\filters\davenport.py", line 112, in <module>
+  File "ahrs\utils\wmm.py", line 370, in __init__
+  File "ahrs\utils\wmm.py", line 416, in reset_coefficients
+  File "ahrs\utils\wmm.py", line 500, in get_properties
+  File "pkgutil.py", line 398, in get_data
+  File "pyimod02_importers.py", line 552, in get_data
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\andre\\Downloads\\coyoterestim\\restim\\dist\\restim\\_internal\\ahrs\\utils\\WMM2025\\WMM.COF'
+[PYI-39044:ERROR] Failed to execute script 'restim' due to unhandled exception!

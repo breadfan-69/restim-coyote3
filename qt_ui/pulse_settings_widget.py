@@ -25,7 +25,13 @@ class MyMplCanvas(FigureCanvas):
 
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         fig = Figure(figsize=(width, height), dpi=dpi)
+        fig.set_facecolor('#3d3d3d')  # Dark grey background
         self.axes = fig.add_subplot(111)
+        self.axes.set_facecolor('#4d4d4d')  # Slightly lighter grey for axes
+        self.axes.tick_params(colors='#e0e0e0')  # Light text for ticks
+        self.axes.xaxis.label.set_color('#e0e0e0')
+        self.axes.yaxis.label.set_color('#e0e0e0')
+        self.axes.title.set_color('#e0e0e0')
 
         self.compute_initial_figure()
 
@@ -71,10 +77,16 @@ class MyStaticMplCanvas(MyMplCanvas):
         x = np.linspace(0, len(y) / samplerate, len(y))
 
         self.axes.cla()
-        self.axes.set_title("Pulse shape")
+        self.axes.set_facecolor('#4d4d4d')  # Maintain grey background
+        self.axes.tick_params(colors='#e0e0e0')  # Light text
+        self.axes.set_title("Pulse shape", color='#e0e0e0')
         self.axes.set_xlim((0, x_limit))
         self.axes.set_ylim((-1.1, 1.1))
-        self.axes.plot(x, y)
+        self.axes.plot(x, y, color='#6496ff', linewidth=2)  # Light blue line
+        self.axes.spines['bottom'].set_color('#5d5d5d')
+        self.axes.spines['left'].set_color('#5d5d5d')
+        self.axes.spines['top'].set_visible(False)
+        self.axes.spines['right'].set_visible(False)
         self.draw()
 
 

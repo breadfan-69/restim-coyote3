@@ -6,11 +6,11 @@ import numpy as np
 from PySide6.QtCore import QPoint, QPointF
 from PySide6.QtWidgets import QGraphicsView, QGraphicsEllipseItem
 
-from qt_ui import resources
+from qt_ui import resources, settings
 from stim_math.threephase_coordinate_transform import ThreePhaseCoordinateTransform, \
     ThreePhaseCoordinateTransformMapToEdge
 
-from PySide6.QtGui import QColor, QMouseEvent
+from PySide6.QtGui import QColor, QMouseEvent, QPen
 from PySide6 import QtCore, QtWidgets, QtGui, QtSvgWidgets
 from PySide6.QtCore import Qt
 
@@ -39,16 +39,50 @@ class ThreephaseWidgetBase(QtWidgets.QGraphicsView):
 
         scene = QtWidgets.QGraphicsScene()
         self.setScene(scene)
+        
+        # Load appropriate SVG based on theme
+        dark_mode = settings.dark_mode_enabled.get()
+        svg_path = resources.phase_diagram_bg if dark_mode else resources.phase_diagram_bg_light
+        svg = QtSvgWidgets.QGraphicsSvgItem(svg_path)
+        scene.addItem(svg)
+        svg.setPos(-svg.boundingRect().width()/2.0, -svg.boundingRect().height()/2.0)
+        self.svg = svg
         self.scene = scene
-        self.background_svg = None
-        self.set_background(stereo=True)
-        self.setBackgroundBrush(Qt.white)
+        
+        # Set background based on theme
+        if dark_mode:
+            self.setBackgroundBrush(QColor("#2d2d2d"))
+        else:
+            self.setBackgroundBrush(QColor("#ffffff"))
 
         self.setMouseTracking(True)
 
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
 
         self.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)  # makes SVG look better on odd dpi settings
+
+    def set_theme(self, dark_mode: bool):
+        """Update the widget theme for dark/light mode"""
+        try:
+            # Update background color
+            if dark_mode:
+                self.setBackgroundBrush(QColor("#2d2d2d"))
+            else:
+                self.setBackgroundBrush(QColor("#ffffff"))
+            
+            # Update SVG based on theme
+            if self.svg:
+                self.scene.removeItem(self.svg)
+            
+            svg_path = resources.phase_diagram_bg if dark_mode else resources.phase_diagram_bg_light
+            svg = QtSvgWidgets.QGraphicsSvgItem(svg_path)
+            self.scene.addItem(svg)
+            svg.setPos(-svg.boundingRect().width()/2.0, -svg.boundingRect().height()/2.0)
+            self.svg = svg
+            self.update()
+        except Exception as e:
+            # Silently handle errors
+            pass
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         self.fitInView(-100, -100, 200, 200, Qt.KeepAspectRatio)
@@ -119,7 +153,7 @@ class ThreephaseWidgetAlphaBeta(ThreephaseWidgetBase):
         self.scene.addItem(self.arrow)
 
         self.border = QGraphicsEllipseItem(0, 0, 83, 83)
-        self.border.setPen(QColor.fromRgb(0, 0, 0))
+        self.border.setPen(QColor.fromRgb(100, 150, 255))  # Light blue - visible on both dark and light
         self.scene.addItem(self.border)
 
         self.arc = ArcSegment(center=QPointF(*ab_to_item_pos(0, 0)), radius=80)
@@ -307,7 +341,7 @@ class Path(QtWidgets.QGraphicsPathItem):
 
         pen = painter.pen()
         pen.setWidth(1)
-        pen.setColor(Qt.black)
+        pen.setColor(QColor.fromRgb(100, 150, 255))  # Light blue - visible on both dark and light
         painter.setPen(pen)
 
         path = self.directPath()
@@ -348,6 +382,11 @@ class ArcSegment(QtWidgets.QGraphicsPathItem):
     def paint(self, painter: QtGui.QPainter, option, widget=None) -> None:
         if not self._enabled:
             return
+
+        pen = QPen()
+        pen.setColor(QColor.fromRgb(100, 150, 255))  # Light blue - visible on both dark and light
+        pen.setWidth(2)
+        painter.setPen(pen)
 
         painter.drawArc(
             int(self._center.x()) - self._radius,

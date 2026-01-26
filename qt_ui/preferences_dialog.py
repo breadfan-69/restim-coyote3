@@ -1,10 +1,12 @@
 import functools
 import logging
+import os
 
 import google.protobuf.text_format
 from PySide6.QtSerialPort import QSerialPortInfo
-from PySide6.QtWidgets import QDialog, QAbstractButton, QDialogButtonBox, QAbstractItemView, QHeaderView, QComboBox, QTableWidgetItem, QCheckBox, QApplication
+from PySide6.QtWidgets import QDialog, QAbstractButton, QDialogButtonBox, QAbstractItemView, QHeaderView, QComboBox, QTableWidgetItem, QCheckBox, QApplication, QLabel, QHBoxLayout, QWidget
 from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QIcon
 
 from qt_ui.preferences_dialog_ui import Ui_PreferencesDialog
 from qt_ui.models.funscript_kit import FunscriptKitModel
@@ -23,6 +25,9 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
         self.setupUi(self)
 
         self.tabWidget.setCurrentIndex(0)
+
+        self._coyote_logger = logging.getLogger('restim.coyote')
+        self._coyote_default_log_level = self._coyote_logger.getEffectiveLevel()
 
         # Initialize pattern service and cache pattern data immediately
         self.pattern_service = PatternControlService()
@@ -53,6 +58,12 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
 
         # patterns setup - do this immediately during initialization
         self.setup_patterns_tab()
+
+        # icon theme setup
+        self.setup_icon_theme_selector()
+        
+        # dark mode setup
+        self.setup_dark_mode_toggle()
 
         # media sync reset buttons
         self.mpc_reload.clicked.connect(
@@ -151,6 +162,19 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
         # neostim settings
         self.neostim_port.setCurrentIndex(self.neostim_port.findData(qt_ui.settings.neostim_serial_port.get()))
 
+        # Coyote 3
+        self.coyote_channel_a_limit.setValue(qt_ui.settings.coyote_channel_a_limit.get())
+        self.coyote_channel_b_limit.setValue(qt_ui.settings.coyote_channel_b_limit.get())
+        self.coyote_channel_a_freq_balance.setValue(qt_ui.settings.coyote_channel_a_freq_balance.get())
+        self.coyote_channel_b_freq_balance.setValue(qt_ui.settings.coyote_channel_b_freq_balance.get())
+        self.coyote_channel_a_intensity_balance.setValue(qt_ui.settings.coyote_channel_a_intensity_balance.get())
+        self.coyote_channel_b_intensity_balance.setValue(qt_ui.settings.coyote_channel_b_intensity_balance.get())
+        self.coyote_max_intensity_change_per_pulse.setValue(
+            qt_ui.settings.coyote_max_intensity_change_per_pulse.get()
+        )
+        self.coyote_graph_window.setValue(qt_ui.settings.coyote_graph_window.get())
+        self.coyote_debug_logging.setChecked(qt_ui.settings.coyote_debug_logging.get())
+
         # media sync settings
         self.mpc_address.setText(qt_ui.settings.media_sync_mpc_address.get())
         self.heresphere_address.setText(qt_ui.settings.media_sync_heresphere_address.get())
@@ -162,12 +186,31 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
         # display settings
         self.display_fps.setValue(int(qt_ui.settings.display_fps.get()))
         self.display_latency_ms.setValue(qt_ui.settings.display_latency.get())
+        
+        # icon theme
+        if hasattr(self, 'icon_theme_combobox'):
+            current_theme = qt_ui.settings.icon_theme.get()
+            index = self.icon_theme_combobox.findData(current_theme)
+            if index < 0:
+                # Fallback: try finding by text if data lookup fails
+                index = self.icon_theme_combobox.findText(current_theme)
+            if index >= 0:
+                # Temporarily disconnect signal to avoid firing on load
+                self.icon_theme_combobox.currentIndexChanged.disconnect(self._on_icon_theme_changed)
+                self.icon_theme_combobox.setCurrentIndex(index)
+                self.icon_theme_combobox.currentIndexChanged.connect(self._on_icon_theme_changed)
+        
+        # dark mode
+        if hasattr(self, 'dark_mode_checkbox'):
+            self.dark_mode_checkbox.setChecked(qt_ui.settings.dark_mode_enabled.get())
 
         # funscript mapping
         self.tableView.setModel(FunscriptKitModel.load_from_settings())
         
         # refresh pattern preferences (just reload checkboxes from settings)
         self.refresh_pattern_preferences()
+
+        self.apply_coyote_logging()
 
     def repopulate_audio_devices(self):
         self.audio_output_device.clear()
@@ -313,6 +356,19 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
         # neoStim
         qt_ui.settings.neostim_serial_port.set(str(self.neostim_port.currentData()))
 
+        # Coyote 3
+        qt_ui.settings.coyote_channel_a_limit.set(self.coyote_channel_a_limit.value())
+        qt_ui.settings.coyote_channel_b_limit.set(self.coyote_channel_b_limit.value())
+        qt_ui.settings.coyote_channel_a_freq_balance.set(self.coyote_channel_a_freq_balance.value())
+        qt_ui.settings.coyote_channel_b_freq_balance.set(self.coyote_channel_b_freq_balance.value())
+        qt_ui.settings.coyote_channel_a_intensity_balance.set(self.coyote_channel_a_intensity_balance.value())
+        qt_ui.settings.coyote_channel_b_intensity_balance.set(self.coyote_channel_b_intensity_balance.value())
+        qt_ui.settings.coyote_max_intensity_change_per_pulse.set(
+            self.coyote_max_intensity_change_per_pulse.value()
+        )
+        qt_ui.settings.coyote_graph_window.set(self.coyote_graph_window.value())
+        qt_ui.settings.coyote_debug_logging.set(self.coyote_debug_logging.isChecked())
+
         # media sync settings
         qt_ui.settings.media_sync_mpc_address.set(self.mpc_address.text())
         qt_ui.settings.media_sync_heresphere_address.set(self.heresphere_address.text())
@@ -324,6 +380,14 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
         # display
         qt_ui.settings.display_fps.set(self.display_fps.value())
         qt_ui.settings.display_latency.set(self.display_latency_ms.value())
+        
+        # icon theme
+        if hasattr(self, 'icon_theme_combobox'):
+            qt_ui.settings.icon_theme.set(self.icon_theme_combobox.currentText())
+        
+        # dark mode
+        if hasattr(self, 'dark_mode_checkbox'):
+            qt_ui.settings.dark_mode_enabled.set(self.dark_mode_checkbox.isChecked())
 
         # funscript mapping
         self.tableView.model().save_to_settings()
@@ -340,9 +404,95 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
                     if was_enabled != is_enabled:
                         self.pattern_service.set_pattern_enabled(pattern_name, is_enabled)
 
+        self.apply_coyote_logging()
+
+    def apply_coyote_logging(self):
+        enabled = qt_ui.settings.coyote_debug_logging.get()
+        new_level = logging.DEBUG if enabled else logging.INFO
+        self._coyote_logger.setLevel(new_level)
+
     def funscript_reset_defaults(self):
         self.tableView.model().reset_to_defaults()
     
+    def setup_icon_theme_selector(self):
+        """Setup icon theme selector in display tab"""
+        # Create a container widget if not already in the UI
+        if not hasattr(self, 'icon_theme_label'):
+            # Get the display settings group box
+            display_group = self.groupBox_5
+            
+            # Create label and combobox
+            self.icon_theme_label = QLabel("Icon Theme:")
+            self.icon_theme_combobox = QComboBox()
+            self.icon_theme_combobox.setMinimumHeight(30)  # Ensure it's visible
+            
+            # Populate with available icons from resources/icons/
+            icons_dir = os.path.join(os.getcwd(), 'resources', 'icons')
+            try:
+                if os.path.exists(icons_dir):
+                    icon_files = sorted([f[:-4] for f in os.listdir(icons_dir) if f.endswith('.png')])
+                    # Sort in desired order: cherries first, then banana, walnut, coyote (favicon excluded - internal use only)
+                    desired_order = ['cherries', 'banana', 'walnut', 'coyote']
+                    icon_files = [f for f in desired_order if f in icon_files] + [f for f in icon_files if f not in desired_order]
+                    # Filter out favicon from the selector
+                    icon_files = [f for f in icon_files if f != 'favicon']
+                    for icon_name in icon_files:
+                        icon_path = os.path.join(icons_dir, f'{icon_name}.png')
+                        if os.path.exists(icon_path):
+                            try:
+                                icon = QIcon(icon_path)
+                                self.icon_theme_combobox.addItem(icon, icon_name)
+                            except Exception as e:
+                                logger.warning(f"Failed to load icon {icon_name}: {e}")
+                                self.icon_theme_combobox.addItem(icon_name)
+                        else:
+                            self.icon_theme_combobox.addItem(icon_name)
+                else:
+                    # If resources dir doesn't exist, just add hardcoded options
+                    for theme_name in ['cherries', 'banana', 'walnut', 'coyote']:
+                        self.icon_theme_combobox.addItem(theme_name)
+            except Exception as e:
+                logger.error(f"Error setting up icon theme selector: {e}")
+                # Fallback: just add hardcoded options
+                for theme_name in ['cherries', 'banana', 'walnut', 'coyote']:
+                    self.icon_theme_combobox.addItem(theme_name)
+            
+            # Add to the display settings layout
+            layout = display_group.layout()
+            if layout and hasattr(layout, 'addRow'):
+                try:
+                    layout.addRow(self.icon_theme_label, self.icon_theme_combobox)
+                except Exception as e:
+                    logger.error(f"Failed to add icon theme to layout: {e}")
+            
+            # Connect combobox change to live update icon theme in parent window
+            self.icon_theme_combobox.currentIndexChanged.connect(self._on_icon_theme_changed)
+    
+    def setup_dark_mode_toggle(self):
+        """Setup dark mode toggle in display tab"""
+        if not hasattr(self, 'dark_mode_checkbox'):
+            # Get the display settings group box
+            display_group = self.groupBox_5
+            
+            # Create label and checkbox
+            self.dark_mode_label = QLabel("Dark Mode:")
+            self.dark_mode_checkbox = QCheckBox("Enable Dark Mode")
+            
+            # Create note label
+            self.dark_mode_note = QLabel("Note: Theme change requires restart")
+            self.dark_mode_note.setStyleSheet("color: #888888; font-size: 10px; font-style: italic;")
+            
+            # Add to the display settings layout
+            layout = display_group.layout()
+            if layout:
+                if hasattr(layout, 'addRow'):
+                    layout.addRow(self.dark_mode_label, self.dark_mode_checkbox)
+                    layout.addRow("", self.dark_mode_note)
+                else:
+                    layout.addWidget(self.dark_mode_label)
+                    layout.addWidget(self.dark_mode_checkbox)
+                    layout.addWidget(self.dark_mode_note)
+
     def setup_patterns_tab(self):
         """Setup the patterns tab with cached pattern data"""
         # Use cached patterns data to avoid late discovery
@@ -418,3 +568,14 @@ class PreferencesDialog(QDialog, Ui_PreferencesDialog):
             if isinstance(widget, QCheckBox):
                 widget.setChecked(False)
 
+    def _on_icon_theme_changed(self):
+        """Handle icon theme selection change - update main window icon in real-time"""
+        if hasattr(self, 'icon_theme_combobox'):
+            selected_theme = self.icon_theme_combobox.currentData()
+            if selected_theme:
+                # Update the setting
+                qt_ui.settings.icon_theme.set(selected_theme)
+                
+                # Update parent window icon if it has the method
+                if self.parent() and hasattr(self.parent(), 'update_window_icon'):
+                    self.parent().update_window_icon()

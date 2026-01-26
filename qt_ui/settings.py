@@ -18,7 +18,12 @@ class Setting:
 
     def get(self):
         if self.cache is None:
-            self.cache = get_settings_instance().value(self.key, self.default_value, self.dtype)
+            settings = get_settings_instance()
+            value = settings.value(self.key, self.default_value, self.dtype)
+            # Ensure default is written if key doesn't exist
+            if not settings.contains(self.key):
+                settings.setValue(self.key, self.default_value)
+            self.cache = value
         return self.cache
 
     def set(self, value):
@@ -107,7 +112,7 @@ fourphase_calibration_center = Setting('calibration_four/center', 0.0, float)
 device_config_device_type = Setting('device_configuration/device_type', 0, int)
 device_config_waveform_type = Setting('device_configuration/waveform_type', 1, int)
 device_config_min_freq = Setting('device_configuration/min_frequency', 500, float)
-device_config_max_freq = Setting('device_configuration/max_frequency', 1000, float)
+device_config_max_freq = Setting('device_configuration/max_frequency', 1500, float)
 device_config_waveform_amplitude_amps = Setting('device_configuration/waveform_amplitude_amps', 0.120, float)
 
 media_sync_default_source = Setting('media_sync/default_source', 'Internal', str)
@@ -118,6 +123,7 @@ media_sync_vlc_username = Setting('media_sync/vlc_username', '', str)
 media_sync_vlc_password = Setting('media_sync/vlc_password', '1234', str)
 media_sync_kodi_address = Setting('media_sync/kodi_address', 'ws://127.0.0.1:9090', str)
 media_sync_stop_audio_automatically = Setting('media_sync/stop_audio_automatically', True, bool)
+media_sync_funscript_offset = Setting('media_sync/funscript_offset', 0.0, float)
 
 audio_api = Setting("audio/api-name", "", str)
 audio_output_device = Setting("audio/device-name", "", str)
@@ -166,6 +172,29 @@ focstim_ip = Setting("focstim/wifi_ip", '', str)
 
 neostim_serial_port = Setting("neostim/serial_port", '', str)
 
+coyote_channel_a_limit = Setting("coyote/channel_a_limit", 200, int)
+coyote_channel_b_limit = Setting("coyote/channel_b_limit", 200, int)
+coyote_channel_a_freq_balance = Setting("coyote/channel_a_freq_balance", 160, int)
+coyote_channel_b_freq_balance = Setting("coyote/channel_b_freq_balance", 160, int)
+coyote_channel_a_intensity_balance = Setting("coyote/channel_a_intensity_balance", 0, int)
+coyote_channel_b_intensity_balance = Setting("coyote/channel_b_intensity_balance", 0, int)
+coyote_channel_a_strength_max = Setting("coyote/channel_a_strength_max", 75, int)
+coyote_channel_a_freq_min = Setting("coyote/channel_a_freq_min", 4, int)
+coyote_channel_a_freq_max = Setting("coyote/channel_a_freq_max", 100, int)
+coyote_channel_b_strength_max = Setting("coyote/channel_b_strength_max", 75, int)
+coyote_channel_b_freq_min = Setting("coyote/channel_b_freq_min", 4, int)
+coyote_channel_b_freq_max = Setting("coyote/channel_b_freq_max", 100, int)
+coyote_max_intensity_change_per_pulse = Setting("coyote/max_intensity_change_per_pulse", 1.0, float)
+coyote_debug_logging = Setting("coyote/debug_logging", False, bool)
+coyote_graph_window = Setting("coyote/graph_window", 3.0, float)
+coyote_queue_horizon_seconds = Setting("coyote/queue_horizon_seconds", 0.15, float)
+coyote_packet_margin = Setting("coyote/packet_margin", 0.8, float)
+coyote_texture_min_hz = Setting("coyote/texture_min_hz", 0.5, float)
+coyote_texture_max_hz = Setting("coyote/texture_max_hz", 5.0, float)
+coyote_texture_depth_fraction = Setting("coyote/texture_depth_fraction", 0.5, float)
+coyote_jitter_limit_fraction = Setting("coyote/jitter_limit_fraction", 0.5, float)
+coyote_residual_bound = Setting("coyote/residual_bound", 0.49, float)
+
 # Pattern preferences - we'll store this as a JSON string and convert to dict
 import json
 
@@ -193,3 +222,7 @@ class DictSetting(Setting):
             get_settings_instance().sync()
 
 pattern_enabled = DictSetting("patterns/enabled", {})
+
+# Theme settings
+dark_mode_enabled = Setting('theme/dark_mode', True, bool)
+icon_theme = Setting('theme/icon_theme', 'cherries', str)

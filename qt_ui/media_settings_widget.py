@@ -146,6 +146,7 @@ class MediaSettingsWidget(QtWidgets.QWidget, Ui_MediaSettingsWidget, metaclass=_
         # emit because there is a chance we switched to/from internal
         # media, which does not support funscripts
         self.funscriptMappingChanged.emit()
+        self.mediaPlayerSourceChanged.emit()  # Notify about media player source change
 
     def connection_status_changed(self, index: int):
         if index == self.current_index:
@@ -224,3 +225,4 @@ class MediaSettingsWidget(QtWidgets.QWidget, Ui_MediaSettingsWidget, metaclass=_
     dialogOpened = QtCore.Signal()  # emitted whenever a dialog is opened which promps audio stop.
     connectionStatusChanged = QtCore.Signal(MediaConnectionState)  # emitted whenever video player connection status changes.
     funscriptMappingChanged = QtCore.Signal()  # emitted whenever new funscript files are added, removed or modified
+    mediaPlayerSourceChanged = QtCore.Signal()  # emitted whenever media player source changes (internal/external)

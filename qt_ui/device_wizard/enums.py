@@ -12,6 +12,8 @@ class DeviceType(Enum):
     FOCSTIM_THREE_PHASE = 5
     NEOSTIM_THREE_PHASE = 6
     FOCSTIM_FOUR_PHASE = 7
+    COYOTE_THREE_PHASE = 8
+    COYOTE_TWO_CHANNEL = 9
 
 
 class WaveformType(Enum):
@@ -30,10 +32,12 @@ class DeviceConfiguration:
 
     def save(self):
         settings.device_config_device_type.set(self.device_type.value)
-        if self.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE):
+        if self.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE, DeviceType.COYOTE_THREE_PHASE):
             settings.device_config_waveform_type.set(self.waveform_type.value)
-            settings.device_config_min_freq.set(self.min_frequency)
-            settings.device_config_max_freq.set(self.max_frequency)
+            # Only save frequency limits for Audio and FOCStim, not Coyote (which uses hardware constants)
+            if self.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE):
+                settings.device_config_min_freq.set(self.min_frequency)
+                settings.device_config_max_freq.set(self.max_frequency)
             settings.device_config_waveform_amplitude_amps.set(self.waveform_amplitude_amps)
 
     @staticmethod

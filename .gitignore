@@ -3,6 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Runtime configuration files
+restim.ini
+dist-onefile/
+dist/
+
 # C extensions
 *.so
 

@@ -1,21 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-added_files = [
-    ('resources/phase diagram bg.svg', 'resources/'),
-    ('resources/favicon.png', 'resources/')
-]
 
 a = Analysis(
     ['restim.py'],
     pathex=[],
     binaries=[],
-    datas=added_files,
+    datas=[('resources', 'resources')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
+    optimize=0,
 )
 pyz = PYZ(a.pure)
 
@@ -32,7 +29,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

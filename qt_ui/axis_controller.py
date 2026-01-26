@@ -11,7 +11,7 @@ class AxisController(QtCore.QObject):
         super(AxisController, self).__init__()
         self.control = control
         self.timer = QtCore.QTimer()
-        self.timer.setInterval(100)
+        self.timer.setInterval(16)  # ~60Hz update rate for responsive UI
         self.script_axis: AbstractAxis = None
         self.internal_axis: AbstractAxis = None
         self.timer.timeout.connect(self.timeout)
@@ -58,6 +58,13 @@ class AxisController(QtCore.QObject):
         self.internal_axis = internal_axis
         self.set_control_value(self.internal_axis.interpolate(time.time()))
         self.control.setEnabled(True)
+
+    @property
+    def axis(self) -> AbstractAxis:
+        """Get the active axis (script_axis if available, otherwise internal_axis)"""
+        if self.script_axis:
+            return self.script_axis
+        return self.internal_axis
 
     modified_by_user = QtCore.Signal()
 
