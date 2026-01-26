@@ -145,9 +145,11 @@ class ThreephaseWidgetAlphaBeta(ThreephaseWidgetBase):
 
         self.transform_params = None
         self.transform = None
+        self.background_svg = None
 
         a, b = (1, 0)
         x, y = ab_to_item_pos(a, b)
+
         self.arrow = Path(source=QtCore.QPointF(x, y),
                           destination=QtCore.QPointF(0, 0))
         self.scene.addItem(self.arrow)
@@ -402,6 +404,7 @@ class ThreephaseWidgetCalibration(ThreephaseWidgetBase):
 
         self.neutral = create_temporal_axis(0.0)
         self.right = create_temporal_axis(0.0)
+        self.background_svg = None
 
         self.path = Path(source=QtCore.QPointF(1, 0), destination=QtCore.QPointF(0, 0))
 

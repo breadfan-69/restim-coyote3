@@ -100,10 +100,8 @@ def collect_funscripts(
                     if case_insensitive_compare(node.name, media_prefix):
                         # Found matching directory, add to search
                         new_dirs.append(full_path)
-                    else:
-                        # Add all subdirectories for recursive search
-                        new_dirs.append(full_path)
                     elif search_subdirectories:
+                        # Add all subdirectories for recursive search
                         new_dirs.append(full_path+"/*")
                 else:
                     a, b, c = split_funscript_path(full_path)
