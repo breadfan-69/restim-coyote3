@@ -131,3 +131,6 @@ dmypy.json
 # sound files
 .wav
 .mp3
+# Local config file
+restim.ini
+restim.ini.*
