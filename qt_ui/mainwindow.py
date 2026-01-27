@@ -79,6 +79,9 @@ class Window(QMainWindow, Ui_MainWindow):
         self.tab_volume.set_play_state(self.playstate)
         self.refresh_play_button_icon()
 
+        # Offset widget toolbar action storage
+        self.funscript_offset_action = None
+
         # set the first tab as active tab, in case we forgot to set it in designer
         self.tabWidget.setCurrentIndex(0)
 
@@ -196,6 +199,9 @@ class Window(QMainWindow, Ui_MainWindow):
         self.page_media.connectionStatusChanged.connect(self.media_connection_status_changed)
         self.page_media.mediaPlayerSourceChanged.connect(self._on_media_player_source_changed)
         self.page_media.bake_audio_button.clicked.connect(self.open_write_audio_dialog)
+
+        # Initialize offset widget visibility based on initial media player
+        self._update_funscript_offset_visibility()
 
         # trigger updates.... maybe not all needed?
         # self.tab_carrier.settings_changed()
@@ -842,11 +848,12 @@ class Window(QMainWindow, Ui_MainWindow):
             # External media player - create widget if needed and show it
             if self.funscript_offset_container is None:
                 self._create_funscript_offset_widget()
-            self.funscript_offset_container.setVisible(True)
+            if self.funscript_offset_action is not None:
+                self.funscript_offset_action.setVisible(True)
         else:
             # Internal media player - hide offset widget
-            if self.funscript_offset_container is not None:
-                self.funscript_offset_container.setVisible(False)
+            if self.funscript_offset_action is not None:
+                self.funscript_offset_action.setVisible(False)
 
     def _create_funscript_offset_widget(self):
         """Create and configure the funscript offset widget"""
@@ -873,10 +880,10 @@ class Window(QMainWindow, Ui_MainWindow):
         media_index = actions.index(self.actionMedia) if self.actionMedia in actions else -1
         if media_index >= 0 and media_index < len(actions) - 1:
             # Insert before the next action after Media
-            self.toolBar.insertWidget(actions[media_index + 1], self.funscript_offset_container)
+            self.funscript_offset_action = self.toolBar.insertWidget(actions[media_index + 1], self.funscript_offset_container)
         else:
             # Fallback: insert before the first separator or action we encounter after Media
-            self.toolBar.insertWidget(self.actionStart, self.funscript_offset_container)
+            self.funscript_offset_action = self.toolBar.insertWidget(self.actionStart, self.funscript_offset_container)
         
         # Apply current theme
         self._apply_funscript_offset_theme()
