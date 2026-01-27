@@ -828,11 +828,8 @@ class Window(QMainWindow, Ui_MainWindow):
         event.accept()
 
     def _on_media_player_source_changed(self):
-        """Handle media player source changes - update offset widget visibility and reset play button"""
+        """Handle media player source changes - update offset widget visibility"""
         self._update_funscript_offset_visibility()
-        # Reset play button to stop state when switching media player source
-        if self.page_media.is_internal():
-            self.signal_stop()
 
     def _update_funscript_offset_visibility(self):
         """Show/hide funscript offset widget based on media player type (internal/external)"""
