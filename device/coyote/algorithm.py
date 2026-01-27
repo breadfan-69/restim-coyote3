@@ -121,9 +121,197 @@ class CoyoteAlgorithm:
         self._channels: Tuple[ChannelPipeline, ...] = tuple(channels)
         self.next_update_time: float = 0.0
         self._last_update_time: float = None
+        self._start_time: Optional[float] = None
 
+    def generate_packet(self, current_time: float) -> Optional[CoyotePulses]:
+        if self._last_update_time is None:
+            self._last_update_time = current_time
 
-# --- CoyoteDigletAlgorithm: for COYOTE_THREE_PHASE only ---
+        delta_ms = max(0.0, (current_time - self._last_update_time) * 1000.0)
+        self._last_update_time = current_time
+
+        self._advance_state(current_time, delta_ms)
+
+        if not self._needs_packet():
+            self._schedule_from_remaining(current_time)
+            return None
+
+        for channel in self._channels:
+            channel.controller.fill_queue(current_time)
+
+        packet_map: Dict[str, List[CoyotePulse]] = {}
+        duration_map: Dict[str, int] = {}
+        for channel in self._channels:
+            pulses = channel.controller.next_packet()
+            channel.state.load_packet(current_time, pulses)
+            packet_map[channel.name] = pulses
+            duration_map[channel.name] = sum(p.duration for p in pulses)
+
+        pulses_a = packet_map.get("A", [])
+        pulses_b = packet_map.get("B", [])
+        duration_a_ms = duration_map.get("A", 0)
+        duration_b_ms = duration_map.get("B", 0)
+
+        # DGLabs V3 protocol: Send B0 commands every 100ms (10 packets/sec)
+        # Each packet contains 4 pulse groups per channel covering 100ms of data
+        self.next_update_time = current_time + 0.1  # Always 100ms interval
+
+        self._log_packet(current_time, pulses_a, pulses_b, duration_a_ms, duration_b_ms)
+
+        return CoyotePulses(pulses_a, pulses_b)
+
+    def get_next_update_time(self) -> float:
+        return self.next_update_time
+
+    def _needs_packet(self) -> bool:
+        queue_low = any(not channel.controller.has_pulses(PULSES_PER_PACKET) for channel in self._channels)
+        ready = any(channel.state.ready() for channel in self._channels)
+        return ready or queue_low
+
+    def _advance_state(self, current_time: float, delta_ms: float) -> None:
+        for channel in self._channels:
+            channel.state.advance(delta_ms)
+
+        delta_s = delta_ms / 1000.0
+        if delta_s <= 0:
+            return
+
+        carrier_hz = float(self.params.carrier_frequency.interpolate(current_time))
+        carrier_norm = normalize(carrier_hz, self._carrier_limits)
+        texture_speed = self.tuning.texture_min_hz + (self.tuning.texture_max_hz - self.tuning.texture_min_hz) * carrier_norm
+
+        for channel in self._channels:
+            channel.generator.advance_phase(texture_speed, delta_s)
+
+    def _schedule_from_remaining(self, current_time: float) -> None:
+        # Even when no new pulses are needed, maintain 100ms packet interval per DGLabs V3 spec
+        self.next_update_time = current_time + 0.1  # 100ms interval
+
+    def _positional_intensity(self, time_s: float, volume: float) -> Tuple[int, int]:
+        alpha, beta = self.position.get_position(time_s)
+
+        p = np.clip((alpha + 1) / 2, 0, 1)  # rescale alpha to (0, 1)
+        calibrate_center = np.clip(self.params.calibrate.center.last_value(), -10, -0.1)
+        exponent = np.log(10**(calibrate_center / 10)) / np.log(0.5)
+        # choose channel a/b intensity to move the sensation between a/b without affecting the overall signal intensity
+        intensity_a = p ** exponent
+        intensity_b = (1 - p) ** exponent
+
+        balance = self.params.calibrate.neutral.last_value()  # calibration adjustment between channel A and B
+        intensity_a *= min(1, 10**(balance/10))
+        intensity_b *= min(1, 10**(-balance/10))
+
+        intensity_scale = 100
+        intensity_a *= intensity_scale * volume
+        intensity_b *= intensity_scale * volume
+
+        return int(intensity_a), int(intensity_b)
+
+    def _get_positional_intensities(self, t: float, volume: float) -> Tuple[int, int]:
+        """Barycentric phase diagram mapping: (beta, alpha) with left=+1, right=-1, neutral=+1 (top)."""
+        alpha, beta = self.position.get_position(t)
+
+        # Barycentric weights for triangle corners
+        w_L = max(0.0, (beta + 1) / 2)
+        w_R = max(0.0, (1 - beta) / 2)
+        w_N = max(0.0, alpha)
+        sum_w = w_L + w_R + w_N
+        if sum_w > 0:
+            w_L /= sum_w
+            w_R /= sum_w
+            w_N /= sum_w
+        else:
+            w_L = w_R = w_N = 0.0
+
+        # Calibration scaling
+        center_val = self.params.calibrate.center.last_value()
+        center_calib = ThreePhaseCenterCalibration(center_val)
+        scale = center_calib.get_scale(alpha, beta)
+
+        # Channel mapping: A = left+neutral, B = right+neutral
+        intensity_a = int((w_L + w_N) * volume * scale * 100.0)
+        intensity_b = int((w_R + w_N) * volume * scale * 100.0)
+
+        return intensity_a, intensity_b
+
+    def _log_packet(
+        self,
+        current_time: float,
+        pulses_a: List[CoyotePulse],
+        pulses_b: List[CoyotePulse],
+        duration_a_ms: int,
+        duration_b_ms: int,
+    ) -> None:
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+
+        alpha, beta = self.position.get_position(current_time)
+        comps = self._display_time_components(current_time)
+        media_type = self._media_type()
+        volume = volume_at(self.media, self.params.volume, current_time)
+
+        lines = [
+            "=" * 72,
+            f"Packet Generated @ {comps[0]:02}:{comps[1]:02}:{comps[2]:02}.{comps[3]:03} [{media_type}]",
+            "=" * 72,
+            f"Position: alpha={alpha:+.2f}, beta={beta:+.2f}, volume={volume:.0%}",
+            "",
+            f"Channel A: duration={duration_a_ms:.0f} ms",
+        ]
+
+        for idx, pulse in enumerate(pulses_a, 1):
+            lines.append(f"  Pulse {idx}: {pulse.duration} ms @ {pulse.frequency} Hz ({pulse.intensity}%)")
+
+        lines.extend(["", f"Channel B: duration={duration_b_ms:.0f} ms"])
+        for idx, pulse in enumerate(pulses_b, 1):
+            lines.append(f"  Pulse {idx}: {pulse.duration} ms @ {pulse.frequency} Hz ({pulse.intensity}%)")
+
+        next_ms = max(0.0, (self.next_update_time - current_time) * 1000.0)
+        lines.extend(
+            [
+                "",
+                f"Next update: {next_ms:.0f} ms "
+                f"(packet_dur_a={duration_a_ms:.0f} ms, packet_dur_b={duration_b_ms:.0f} ms, margin={self.tuning.packet_margin:.0%})",
+                "=" * 72,
+                "",
+            ]
+        )
+
+        logger.debug("\n".join(lines))
+
+    def _media_type(self) -> str:
+        media_type = getattr(self.media, "media_type", None)
+        if media_type:
+            return str(media_type)
+        class_name = self.media.__class__.__name__.lower()
+        if class_name.startswith("internal"):
+            return "internal"
+        if "vlc" in class_name:
+            return "vlc"
+        if "mpv" in class_name:
+            return "mpv"
+        return class_name
+
+    def _display_time_components(self, current_time: float):
+        media_type = getattr(self.media, "media_type", None)
+        if media_type and str(media_type).lower() != "internal":
+            mapper = getattr(self.media, "map_timestamp", None)
+            if callable(mapper) and self.media.is_playing():
+                try:
+                    rel_time = mapper(time.time())
+                    if rel_time is not None and rel_time >= 0:
+                        return split_seconds(rel_time)
+                except Exception:  # pragma: no cover - defensive
+                    pass
+
+        if media_type and str(media_type).lower() == "internal":
+            now = time.localtime()
+            millis = int((time.time() - int(time.time())) * 1000)
+            return now.tm_hour, now.tm_min, now.tm_sec, millis
+
+        if self._start_time is None:
+            self._start_time = current_time
+        return split_seconds(current_time - self._start_time)
 class CoyoteDigletAlgorithm:
     def __init__(
         self,
