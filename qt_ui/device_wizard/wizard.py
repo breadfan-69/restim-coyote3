@@ -158,8 +158,12 @@ class DeviceSelectionWizard(QWizard):
                 None
             )
         elif self.page_device_type.coyote_radio.isChecked():
+            if self.page_coyote_waveform_select.is_two_channel():
+                device_type = DeviceType.COYOTE_TWO_CHANNEL
+            else:
+                device_type = DeviceType.COYOTE_THREE_PHASE
             return DeviceConfiguration(
-                DeviceType.COYOTE_THREE_PHASE,
+                device_type,
                 WaveformType.PULSE_BASED,
                 coyote_constants.HARDWARE_MIN_FREQ_HZ,
                 coyote_constants.HARDWARE_MAX_FREQ_HZ,
@@ -181,6 +185,10 @@ class DeviceSelectionWizard(QWizard):
             self.page_device_type.neostim_radio.setChecked(True)
         if config.device_type == DeviceType.COYOTE_THREE_PHASE:
             self.page_device_type.coyote_radio.setChecked(True)
+            self.page_coyote_waveform_select.three_phase_radio.setChecked(True)
+        if config.device_type == DeviceType.COYOTE_TWO_CHANNEL:
+            self.page_device_type.coyote_radio.setChecked(True)
+            self.page_coyote_waveform_select.two_channel_radio.setChecked(True)
 
         self.page_waveform_type.continuous_radio.setChecked(config.waveform_type == WaveformType.CONTINUOUS)
         self.page_waveform_type.pulse_based_radio.setChecked(config.waveform_type == WaveformType.PULSE_BASED)

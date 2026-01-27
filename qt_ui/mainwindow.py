@@ -430,13 +430,13 @@ class Window(QMainWindow, Ui_MainWindow):
             visible -= {self.tab_vibrate, self.tab_details}
         if config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             visible |= {self.tab_coyote}
-            # Replace calibration tab with three-phase tab for coyote_three_phase
+            # Show appropriate calibration tab based on mode
             if config.device_type == DeviceType.COYOTE_THREE_PHASE:
                 visible |= {self.tab_threephase}
                 visible -= {self.tab_coyote_calibration}
-            else:
+            else:  # COYOTE_TWO_CHANNEL
+                visible |= {self.tab_coyote_calibration}
                 visible -= {self.tab_threephase}
-                visible -= {self.tab_coyote_calibration}
             visible -= {self.tab_vibrate, self.tab_pulse_settings, self.tab_details}
 
         for tab in all_tabs:
@@ -792,7 +792,7 @@ class Window(QMainWindow, Ui_MainWindow):
         config = DeviceConfiguration.from_settings()
         currently_selected_text = self.comboBox_patternSelect.currentText()
 
-        if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.NEOSTIM_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE, DeviceType.COYOTE_THREE_PHASE):
+        if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.NEOSTIM_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE, DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             self.comboBox_patternSelect.clear()
             for pattern in self.motion_3.patterns:
                 self.comboBox_patternSelect.addItem(pattern.name(), pattern)

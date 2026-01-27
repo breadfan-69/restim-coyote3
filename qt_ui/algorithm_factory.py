@@ -70,8 +70,8 @@ class AlgorithmFactory:
                     self.get_axis_alpha(),
                     self.get_axis_beta(),
                 ),
-                transform=self.mainwindow.tab_threephase.transform_params,
-                calibrate=self.mainwindow.tab_threephase.calibrate_params,
+                transform=self.mainwindow.tab_coyote_calibration.transform_params,
+                calibrate=self.mainwindow.tab_coyote_calibration.calibrate_params,
                 volume=VolumeParams(
                     api=self.get_axis_volume_api(),
                     master=self.get_axis_volume_master(),
