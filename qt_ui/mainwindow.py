@@ -829,7 +829,7 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def _on_media_player_source_changed(self):
         """Handle media player source changes - update offset widget visibility"""
-        print(f"DEBUG: _on_media_player_source_changed called, is_internal={self.page_media.is_internal()}")
+        logger.info(f"_on_media_player_source_changed called, is_internal={self.page_media.is_internal()}")
         self._update_funscript_offset_visibility()
         
         # Stop playback when switching to internal player
