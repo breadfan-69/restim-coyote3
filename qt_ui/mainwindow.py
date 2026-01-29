@@ -617,6 +617,7 @@ class Window(QMainWindow, Ui_MainWindow):
 
             self.output_device.start_updates(algorithm)
             self.playstate = PlayState.PLAYING
+            self.tab_volume.set_play_state(self.playstate)
             self.refresh_play_button_icon()
         else:
             raise RuntimeError("Unknown device type")
