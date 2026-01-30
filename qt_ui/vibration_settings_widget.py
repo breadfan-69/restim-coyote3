@@ -22,8 +22,22 @@ class MyMplCanvas(FigureCanvas):
     """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
 
     def __init__(self, parent=None, width=5, height=4, dpi=100):
+        from qt_ui import settings
         fig = Figure(figsize=(width, height), dpi=dpi)
         self.axes = fig.add_subplot(111)
+
+        # Set dark mode for matplotlib canvas if enabled
+        dark_mode = settings.dark_mode_enabled.get()
+        if dark_mode:
+            fig.patch.set_facecolor('#2d2d2d')
+            self.axes.set_facecolor('#232323')
+            self.axes.tick_params(colors='#e0e0e0')
+            self.axes.title.set_color('#e0e0e0')
+            self.axes.xaxis.label.set_color('#e0e0e0')
+            self.axes.yaxis.label.set_color('#e0e0e0')
+        else:
+            fig.patch.set_facecolor('#ffffff')
+            self.axes.set_facecolor('#ffffff')
 
         self.compute_initial_figure()
 
@@ -79,6 +93,29 @@ class MyStaticMplCanvas(MyMplCanvas):
 class VibrationSettingsWidget(QtWidgets.QWidget):
     def __init__(self):
         QtWidgets.QWidget.__init__(self)
+
+        # Dark mode support
+        dark_mode = settings.dark_mode_enabled.get()
+        if dark_mode:
+            self.setStyleSheet("""
+                QWidget {
+                    background-color: #2d2d2d;
+                    color: #e0e0e0;
+                }
+                QGroupBox {
+                    color: #e0e0e0;
+                }
+                QLabel {
+                    color: #e0e0e0;
+                }
+                QDoubleSpinBox {
+                    background-color: #232323;
+                    color: #e0e0e0;
+                    border: 1px solid #444;
+                }
+            """)
+        else:
+            self.setStyleSheet("")
 
         self.vibration_1 = VibrationParams(
             create_temporal_axis(False, interpolation='step'),
