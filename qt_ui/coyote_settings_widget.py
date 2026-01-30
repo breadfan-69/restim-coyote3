@@ -864,25 +864,7 @@ class PulseGraph(QWidget):
                     # Add rectangle to scene
                     self.scene.addItem(rect)
                 
-                # Draw frequency tick marks for visualization
-                if pulse.frequency > 0 and rect_width > 10:
-                    # Number of ticks based on frequency (higher frequency = more ticks)
-                    num_ticks = min(max(2, int(pulse.frequency / 20)), 8)  # 2-8 ticks
-                    
-                    tick_spacing = rect_width / (num_ticks + 1)
-                    tick_height = rect_height * 0.4  # 40% of rectangle height
-                    
-                    for t in range(1, num_ticks + 1):
-                        tick_x = x_start + (t * tick_spacing)
-                        tick_y = height - rect_height
-                        
-                        # Draw tick mark
-                        tick = QGraphicsLineItem(
-                            tick_x, tick_y,              # Start at top of rectangle
-                            tick_x, tick_y + tick_height  # Go down
-                        )
-                        tick.setPen(QPen(QColor("white"), 1))
-                        self.scene.addItem(tick)
+                # Frequency tick marks removed as color already encodes frequency
 
 class PulseRectItem(QGraphicsRectItem):
     def __init__(self, x, y, width, height, pulse):
