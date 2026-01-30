@@ -2,6 +2,8 @@ from __future__ import annotations  # multiple return values
 import numpy as np
 import collections.abc
 
+from typing import Optional
+
 from device.focstim.fourphase_algorithm import FOCStimFourphaseAlgorithm
 from device.neostim.algorithm import NeoStimAlgorithm
 from device.coyote.algorithm import CoyoteAlgorithm, CoyoteDigletAlgorithm
@@ -533,7 +535,7 @@ class AlgorithmFactory:
     def get_axis_neostim_debug(self):
         return self.mainwindow.tab_neostim.axis_debug
 
-    def get_axis_from_script_mapping(self, axis: AxisEnum, limits: Optional[(int, int)] = None) -> AbstractAxis | None:
+    def get_axis_from_script_mapping(self, axis: AxisEnum, limits: Optional[tuple[int, int]] = None) -> AbstractAxis | None:
         if not self.load_funscripts:
             return None
 

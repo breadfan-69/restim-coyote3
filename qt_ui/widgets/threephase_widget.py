@@ -32,6 +32,7 @@ class ThreephaseWidgetBase(QtWidgets.QGraphicsView):
     """
     def __init__(self, parent):
         QtWidgets.QGraphicsView.__init__(self, parent)
+        self.background_svg = None
 
         self.setAlignment(Qt.AlignCenter)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -398,16 +399,17 @@ class ArcSegment(QtWidgets.QGraphicsPathItem):
             int(16 * (-self._start + 90)), int(16 * -self._length))
 
 
+
 class ThreephaseWidgetCalibration(ThreephaseWidgetBase):
     def __init__(self, parent):
         super(ThreephaseWidgetCalibration, self).__init__(parent)
 
         self.neutral = create_temporal_axis(0.0)
         self.right = create_temporal_axis(0.0)
-        self.background_svg = None
+        # Properly initialize background_svg
+        self.set_background()
 
         self.path = Path(source=QtCore.QPointF(1, 0), destination=QtCore.QPointF(0, 0))
-
         self.scene.addItem(self.path)
 
         self.last_state = None
