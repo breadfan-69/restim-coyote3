@@ -1,7 +1,8 @@
 # Restim
 
 Restim is a realtime e-stim signal generator for multi-electrode setups.
-
+This is a fork of diglet48/restim with added features.
+Coyote connection and visualizer based on code written by [voltmouse69.](https://github.com/voltmouse69/restim)
 Refer to the [wiki](https://github.com/diglet48/restim/wiki) for help.
 
 ## Supported hardware
