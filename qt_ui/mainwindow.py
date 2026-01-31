@@ -207,6 +207,7 @@ class Window(QMainWindow, Ui_MainWindow):
         # self.tab_carrier.settings_changed()
         self.tab_pulse_settings.settings_changed()
         self.tab_threephase.settings_changed()
+        self.tab_coyote_calibration.settings_changed()
         self.tab_volume.refresh_master_volume()
         self.tab_vibrate.settings_changed()
 
