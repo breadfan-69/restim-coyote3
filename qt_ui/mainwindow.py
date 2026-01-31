@@ -236,6 +236,13 @@ class Window(QMainWindow, Ui_MainWindow):
         # self.iconDevice = IconWithConnectionStatus(self.actionDevice.icon(), self.toolBar.widgetForAction(self.actionDevice))
         # self.actionDevice.setIcon(QIcon(self.iconDevice))
 
+
+        # Instantiate AboutDialog
+        self.about_dialog = qt_ui.about_dialog.AboutDialog(self)
+
+        # Connect Help->About action to open_about_dialog
+        self.actionAbout.triggered.connect(self.open_about_dialog)
+
         self.connect_signals_slots_actionbar()
         
         # Add Coyote mode label in status bar (only visible for Coyote devices)
