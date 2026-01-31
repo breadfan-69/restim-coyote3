@@ -15,22 +15,22 @@ class AboutDialog(QDialog, Ui_AboutDialog):
         self.label.setText(
             f"""
 <html>
-	<head/>
-	<body>
-		<p><span style=" font-size:18pt; font-weight:700;">
-			Restim
-			</span>
-		</p>
-		<p>
-			version: {VERSION}
-		</p>
-		<p>
-			homepage: <a href="https://github.com/diglet48/restim">
-			<span style=" text-decoration: underline; color:#334327;">
-			https://github.com/diglet48/restim</span>
-			</a>
-		</p>
-	</body>
+  <head/>
+  <body>
+    <p><span style=\" font-size:18pt; font-weight:700;\">Restim - Coyote3</span></p>
+    <p>version: {VERSION}</p>
+    <p>Latest version:<br/>
+      <a href=\"https://github.com/breadfan-69/restim-coyote3/releases\">https://github.com/breadfan-69/restim-coyote3/releases</a>
+    </p>
+    <p>Based on:<br/>
+      <a href=\"https://github.com/voltmouse69/restim\">https://github.com/voltmouse69/restim</a><br/>
+      <a href=\"https://github.com/diglet48/restim\">https://github.com/diglet48/restim</a>
+    </p>
+    <p>Wiki:<br/>
+      <a href=\"https://github.com/diglet48/restim/wiki\">https://github.com/diglet48/restim/wiki</a>
+    </p>
+  </body>
 </html>
             """
         )
+        self.label.setOpenExternalLinks(True)
