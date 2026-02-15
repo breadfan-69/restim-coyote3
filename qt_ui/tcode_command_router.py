@@ -25,7 +25,6 @@ class TCodeCommandRouter:
     def __init__(self,
                  alpha: AbstractAxis,
                  beta: AbstractAxis,
-                 gamma: AbstractAxis,
 
                  volume_api: AbstractAxis,
                  volume_external: AbstractAxis,
@@ -48,10 +47,14 @@ class TCodeCommandRouter:
                  vibration_2_left_right_bias: AbstractAxis,
                  vibration_2_high_low_bias: AbstractAxis,
                  vibration_2_random: AbstractAxis,
+
+                 intensity_a: AbstractAxis,
+                 intensity_b: AbstractAxis,
+                 intensity_c: AbstractAxis,
+                 intensity_d: AbstractAxis,
                  ):
         self.alpha = alpha
         self.beta = beta
-        self.gamma = gamma
         self.volume_api = volume_api
         self.volume_external = volume_external
         self.carrier_frequency = carrier_frequency
@@ -73,6 +76,11 @@ class TCodeCommandRouter:
         self._pulse_frequency_limits_override = None
         self._allowed_axes_override: Optional[Set[AxisEnum]] = None
 
+        self.intensity_a = intensity_a
+        self.intensity_b = intensity_b
+        self.intensity_c = intensity_c
+        self.intensity_d = intensity_d
+
         self.mapping = {}
         self.reload_kit()
 
@@ -80,7 +88,7 @@ class TCodeCommandRouter:
         axis_enum_to_axis = {
             AxisEnum.POSITION_ALPHA: self.alpha,
             AxisEnum.POSITION_BETA: self.beta,
-            AxisEnum.POSITION_GAMMA: self.gamma,
+
             AxisEnum.VOLUME_API: self.volume_api,
             AxisEnum.VOLUME_EXTERNAL: self.volume_external,
             AxisEnum.CARRIER_FREQUENCY: self.carrier_frequency,
@@ -101,6 +109,11 @@ class TCodeCommandRouter:
             AxisEnum.VIBRATION_2_LEFT_RIGHT_BIAS: self.vibration_2_left_right_bias,
             AxisEnum.VIBRATION_2_HIGH_LOW_BIAS: self.vibration_2_high_low_bias,
             AxisEnum.VIBRATION_2_RANDOM: self.vibration_2_random,
+
+            AxisEnum.INTENSITY_A: self.intensity_a,
+            AxisEnum.INTENSITY_B: self.intensity_b,
+            AxisEnum.INTENSITY_C: self.intensity_c,
+            AxisEnum.INTENSITY_D: self.intensity_d,
         }
 
         kit = FunscriptKitModel.load_from_settings()
