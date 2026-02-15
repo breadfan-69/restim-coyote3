@@ -1,1 +1,1 @@
-VERSION = "v1.53.21-beta"
+VERSION = "v1.54"
