@@ -3,13 +3,16 @@ import logging
 from typing import Optional
 import time
 import threading
+import sys
 
 from bleak import BleakClient, BleakScanner
 from device.output_device import OutputDevice
+import qt_ui.settings as ui_settings
 
 from PySide6.QtCore import QObject, Signal
 from device.coyote.constants import (
     LOG_PREFIX,
+    MAIN_SERVICE_UUID,
     WRITE_CHAR_UUID,
     NOTIFY_CHAR_UUID,
     BATTERY_CHAR_UUID,
@@ -53,6 +56,16 @@ class CoyoteDevice(OutputDevice, QObject):
         self._had_successful_connection = False  # Track if we've ever connected before
         self._shutdown = False  # Flag to permanently stop the connection loop
         self._force_disconnect = False  # Flag for temporary disconnect (e.g., reset button)
+        persisted_address = ui_settings.coyote_last_device_address.get()
+        self._last_device_address: Optional[str] = (persisted_address.strip() if isinstance(persisted_address, str) else None) or None
+        self._using_cached_address = False
+        self._cached_connect_failure_count = 0
+        self._cached_connect_failure_limit = 3
+        self._skip_cached_reconnect_scans = 0
+        self._next_scan_time = 0.0
+        self._scan_attempt_counter = 0
+        self._last_scan_elapsed = 0.0
+        self._scan_failure_streak = 0
         
         # Start connection process
         self._start_connection_loop()
@@ -61,12 +74,11 @@ class CoyoteDevice(OutputDevice, QObject):
         """Start the connection process in a separate thread"""
         loop = asyncio.new_event_loop()
         self._event_loop = loop
-        asyncio.set_event_loop(loop)
         
         def run_loop():
             logger.info(f"{LOG_PREFIX} Starting asyncio loop thread")
+            asyncio.set_event_loop(loop)
             loop.run_until_complete(self._connection_loop())
-            loop.run_forever()
             
         threading.Thread(target=run_loop, daemon=True).start()
 
@@ -75,8 +87,6 @@ class CoyoteDevice(OutputDevice, QObject):
         logger.info(f"{LOG_PREFIX} Starting connection loop")
         prev_stage = self.connection_stage
         
-        attempt_counter = 0
-
         while not self._shutdown:
             try:
                 # Handle temporary disconnect (e.g., from reset button)
@@ -84,6 +94,8 @@ class CoyoteDevice(OutputDevice, QObject):
                     logger.info(f"{LOG_PREFIX} Force disconnect triggered")
                     self._force_disconnect = False
                     await self._disconnect_client()
+                    self._scan_attempt_counter = 0
+                    self._next_scan_time = 0.0
                     self.connection_stage = ConnectionStage.DISCONNECTED
                     continue
                 
@@ -100,44 +112,76 @@ class CoyoteDevice(OutputDevice, QObject):
                     self.connection_stage = ConnectionStage.SCANNING
                     
                 elif self.connection_stage == ConnectionStage.SCANNING:
+                    now = time.time()
+                    if now < self._next_scan_time:
+                        await asyncio.sleep(min(0.5, self._next_scan_time - now))
+                        continue
+
                     if await self._scan_for_device():
-                        attempt_counter = 0
+                        self._scan_attempt_counter = 0
+                        self._next_scan_time = 0.0
                         logger.info(f"{LOG_PREFIX} Device found, connecting...")
                         self.connection_stage = ConnectionStage.CONNECTING
                     else:
-                        attempt_counter += 1
-                        # Retry quickly without delay
-                        logger.info(f"{LOG_PREFIX} Device not found (attempt {attempt_counter}); retrying...")
-                        # No wait - retry immediately
+                        self._scan_attempt_counter += 1
+                        retry_delay = min(4.0, max(2.0, SCAN_RETRY_SECONDS * 0.5))
+                        self._next_scan_time = time.time() + retry_delay
+                        logger.info(
+                            f"{LOG_PREFIX} Device not found (attempt {self._scan_attempt_counter}); "
+                            f"scan took {self._last_scan_elapsed:.1f}s; retrying in {retry_delay:.1f}s..."
+                        )
                         
                 elif self.connection_stage == ConnectionStage.CONNECTING:
                     try:
                         await self.client.connect()
-                        # Send initial power levels 0,0 immediately after connection
-                        await self._send_initial_power_zero()
+                        self._cached_connect_failure_count = 0
+                        self._using_cached_address = False
                         logger.info(f"{LOG_PREFIX} Connected, discovering services...")
                         self.connection_stage = ConnectionStage.SERVICE_DISCOVERY
                     except Exception as e:
                         logger.error(f"{LOG_PREFIX} Connection failed: {e}")
-                        # Reset client and go back to scanning
-                        self.client = None
-                        await self.disconnect()
+                        if self._using_cached_address and self._last_device_address:
+                            self._cached_connect_failure_count += 1
+                            self._skip_cached_reconnect_scans = max(self._skip_cached_reconnect_scans, 2)
+                            if self._cached_connect_failure_count >= self._cached_connect_failure_limit:
+                                logger.warning(
+                                    f"{LOG_PREFIX} Cached address connect failed {self._cached_connect_failure_count}x; "
+                                    f"clearing cached address and forcing fresh discovery"
+                                )
+                                self._remember_device_address(None)
+                            else:
+                                logger.warning(
+                                    f"{LOG_PREFIX} Cached address connect failed "
+                                    f"({self._cached_connect_failure_count}/{self._cached_connect_failure_limit}); "
+                                    f"keeping cached address for fast retry"
+                                )
+                            self._using_cached_address = False
+                        await self._recover_from_transient_failure("connect failure")
                         
                 elif self.connection_stage == ConnectionStage.SERVICE_DISCOVERY:
                     try:
-                        services = list(self.client.services)
-                        if len(services) > 0:
-                            logger.info(f"{LOG_PREFIX} Services discovered ({len(services)}), waiting for characteristics to load...")
+                        if hasattr(self.client, "get_services"):
+                            services = await self.client.get_services()
+                            service_count = len(list(services))
+                        else:
+                            services = self.client.services
+                            service_count = len(list(services))
+
+                        if service_count > 0:
+                            logger.info(f"{LOG_PREFIX} Services discovered ({service_count}), waiting for characteristics to load...")
                             await asyncio.sleep(0.5)  # Wait for characteristics to fully load
-                            # Send initial power levels 0,0 after service discovery
-                            await self._send_initial_power_zero()
-                            self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
+                            logger.info(f"{LOG_PREFIX} Sending initial 0,0 before status subscribe...")
+                            if await self._send_initial_power_zero():
+                                self.connection_stage = ConnectionStage.STATUS_SUBSCRIBE
+                            else:
+                                logger.error(f"{LOG_PREFIX} Failed to send initial 0,0 before subscribe")
+                                await self._recover_from_transient_failure("initial zero command failed")
                         else:
                             logger.error(f"{LOG_PREFIX} Service discovery failed")
-                            await self.disconnect()
+                            await self._recover_from_transient_failure("service discovery failed")
                     except Exception as e:
                         logger.error(f"{LOG_PREFIX} Service discovery error: {e}")
-                        await self.disconnect()
+                        await self._recover_from_transient_failure("service discovery error")
                         
                 elif self.connection_stage == ConnectionStage.STATUS_SUBSCRIBE:
                     if await self._subscribe_to_notifications(NOTIFY_CHAR_UUID):
@@ -145,7 +189,7 @@ class CoyoteDevice(OutputDevice, QObject):
                         self.connection_stage = ConnectionStage.SYNC_PARAMETERS
                     else:
                         logger.error(f"{LOG_PREFIX} Status subscription failed")
-                        await self.disconnect()
+                        await self._recover_from_transient_failure("status subscription failed")
                         
                 elif self.connection_stage == ConnectionStage.SYNC_PARAMETERS:
                     if await self._send_parameters():
@@ -163,7 +207,7 @@ class CoyoteDevice(OutputDevice, QObject):
                         self.connection_stage = ConnectionStage.CONNECTED
                     else:
                         logger.error(f"{LOG_PREFIX} Parameter sync failed")
-                        await self.disconnect()
+                        await self._recover_from_transient_failure("parameter sync failed")
                         
                 elif self.connection_stage == ConnectionStage.CONNECTED:
                     # Maintain connection and resend parameters periodically
@@ -194,16 +238,39 @@ class CoyoteDevice(OutputDevice, QObject):
                 
             except Exception as e:
                 logger.error(f"{LOG_PREFIX} Connection loop error: {e}")
-                # raise e
-                await self.disconnect()
+                await self._recover_from_transient_failure("connection loop error")
                 
             # Small delay between iterations
             await asyncio.sleep(0.1)
 
-    async def _send_initial_power_zero(self):
-        """Send initial power levels 0,0 to the device after Bleak connection."""
+    async def _send_initial_power_zero(self) -> bool:
+        """Send initial power levels 0,0 to the device and report success."""
         strengths = CoyoteStrengths(channel_a=0, channel_b=0)
-        await self.send_command(strengths=strengths)
+        return await self.send_command(strengths=strengths)
+
+    async def _recover_from_transient_failure(self, reason: str):
+        """Handle recoverable BLE failures without permanently stopping auto-reconnect."""
+        logger.info(f"{LOG_PREFIX} Recovering from transient failure: {reason}")
+        await self._disconnect_client()
+        self._scan_attempt_counter = 0
+        self.connection_stage = ConnectionStage.SCANNING
+        self._next_scan_time = time.time() + 1.0
+
+    def _create_client(self, device_or_address):
+        """Create a Bleak client with conservative Windows behavior to reduce stale-cache issues."""
+        if sys.platform.startswith("win"):
+            try:
+                return BleakClient(device_or_address, winrt={"use_cached_services": False})
+            except TypeError:
+                logger.debug(f"{LOG_PREFIX} Bleak backend does not support winrt kwargs; falling back")
+                return BleakClient(device_or_address)
+        return BleakClient(device_or_address)
+
+    def _remember_device_address(self, address: Optional[str]):
+        self._last_device_address = address
+        self._cached_connect_failure_count = 0
+        self._skip_cached_reconnect_scans = 0
+        ui_settings.coyote_last_device_address.set(address or "")
 
     def start_updates(self, algorithm: Optional[any]):
         logger.info(f"{LOG_PREFIX} start_updates called")
@@ -359,39 +426,119 @@ class CoyoteDevice(OutputDevice, QObject):
 
     async def _scan_for_device(self):
         """Scan for Coyote device"""
+        scan_start = time.time()
+
+        def _finish(found: bool) -> bool:
+            self._last_scan_elapsed = time.time() - scan_start
+            self._scan_failure_streak = 0 if found else self._scan_failure_streak + 1
+            return found
+
         try:
             logger.info(f"{LOG_PREFIX} Scanning for device: {self.device_name}")
-            
-            # Try discover() first (most reliable on Windows)
-            try:
-                devices = await BleakScanner.discover(timeout=5.0)
-                for dev in devices:
-                    if dev.name == self.device_name:
-                        logger.info(f"{LOG_PREFIX} Device found: {dev.name} ({dev.address})")
-                        self.client = BleakClient(dev)
-                        self.connection_stage = ConnectionStage.CONNECTING
-                        return True
-            except Exception as e:
-                logger.debug(f"{LOG_PREFIX} Discover scan error: {e}")
-            
-            # Try name-based search
-            try:
-                device = await BleakScanner.find_device_by_name(self.device_name, timeout=5.0)
-                if device:
-                    logger.info(f"{LOG_PREFIX} Device found: {device.name} ({device.address})")
-                    self.client = BleakClient(device)
-                    self.connection_stage = ConnectionStage.CONNECTING
+            target_name = self.device_name.lower()
+            target_prefix = "47l121"
+            target_service_uuid = MAIN_SERVICE_UUID.lower()
+
+            def _is_target(device, advertisement_data=None) -> bool:
+                dev_name = (getattr(device, 'name', None) or "").lower()
+                if dev_name == target_name or dev_name.startswith(target_prefix):
                     return True
+
+                if advertisement_data:
+                    adv_name = (getattr(advertisement_data, 'local_name', None) or "").lower()
+                    if adv_name == target_name or adv_name.startswith(target_prefix):
+                        return True
+                    adv_uuids = [u.lower() for u in (getattr(advertisement_data, 'service_uuids', None) or [])]
+                    if target_service_uuid in adv_uuids:
+                        return True
+
+                return False
+
+            if self._last_device_address and self._skip_cached_reconnect_scans <= 0:
+                try:
+                    logger.info(f"{LOG_PREFIX} Trying direct reconnect to known address: {self._last_device_address}")
+                    self.client = self._create_client(self._last_device_address)
+                    self._using_cached_address = True
+                    return _finish(True)
+                except Exception as e:
+                    self._using_cached_address = False
+                    logger.debug(f"{LOG_PREFIX} Direct address reconnect setup failed: {e}")
+            elif self._last_device_address and self._skip_cached_reconnect_scans > 0:
+                logger.info(
+                    f"{LOG_PREFIX} Skipping cached-address reconnect this scan "
+                    f"({self._skip_cached_reconnect_scans} scan(s) remaining)"
+                )
+                self._skip_cached_reconnect_scans -= 1
+
+            # Try filter-based scan that can match advertisement local name / prefix / service UUID
+            try:
+                def _matches(device, advertisement_data):
+                    return _is_target(device, advertisement_data)
+
+                device = await BleakScanner.find_device_by_filter(_matches, timeout=2.0)
+                if device:
+                    logger.info(f"{LOG_PREFIX} Device found via advertisement filter: {device.name} ({device.address})")
+                    self._remember_device_address(device.address)
+                    self.client = self._create_client(device.address)
+                    self._using_cached_address = False
+                    return _finish(True)
             except Exception as e:
-                logger.debug(f"{LOG_PREFIX} Name search error: {e}")
+                logger.info(f"{LOG_PREFIX} Filter scan error: {e}")
+
+            # Run discover() every attempt for consistency and to avoid stale conditional branches.
+            try:
+                devices = await BleakScanner.discover(timeout=2.0)
+                nearby = [f"{dev.name} ({dev.address})" for dev in devices if dev.name and dev.name.startswith("47L")]
+                if nearby:
+                    logger.info(f"{LOG_PREFIX} Nearby 47L devices: {', '.join(nearby)}")
+                for dev in devices:
+                    if _is_target(dev):
+                        logger.info(f"{LOG_PREFIX} Device found via discover: {dev.name} ({dev.address})")
+                        self._remember_device_address(dev.address)
+                        self.client = self._create_client(dev.address)
+                        self._using_cached_address = False
+                        return _finish(True)
+            except Exception as e:
+                logger.info(f"{LOG_PREFIX} Discover scan error: {e}")
+
+            try:
+                device = await BleakScanner.find_device_by_name(self.device_name, timeout=2.0)
+                if device:
+                    logger.info(f"{LOG_PREFIX} Device found by name: {device.name} ({device.address})")
+                    self._remember_device_address(device.address)
+                    self.client = self._create_client(device.address)
+                    self._using_cached_address = False
+                    return _finish(True)
+            except Exception as e:
+                logger.info(f"{LOG_PREFIX} Name search error: {e}")
+
+            if sys.platform.startswith("win") and self._scan_failure_streak >= 2:
+                try:
+                    logger.warning(
+                        f"{LOG_PREFIX} Triggering Windows BLE scanner refresh "
+                        f"after {self._scan_failure_streak + 1} consecutive misses"
+                    )
+                    async with BleakScanner(scanning_mode="active") as scanner:
+                        await asyncio.sleep(4.0)
+                        for dev in scanner.discovered_devices:
+                            if _is_target(dev):
+                                logger.info(
+                                    f"{LOG_PREFIX} Device found after scanner refresh: "
+                                    f"{dev.name} ({dev.address})"
+                                )
+                                self._remember_device_address(dev.address)
+                                self.client = self._create_client(dev.address)
+                                self._using_cached_address = False
+                                return _finish(True)
+                except Exception as e:
+                    logger.info(f"{LOG_PREFIX} Scanner refresh error: {e}")
             
             logger.warning(f"{LOG_PREFIX} Device {self.device_name} not found. Check device is powered on and Bluetooth may need to be toggled.")
-            return False
+            return _finish(False)
             
         except Exception as e:
             logger.error(f"{LOG_PREFIX} Scan error: {e}")
-            await self.disconnect()
-            return False
+            return _finish(False)
 
     async def send_command(self, 
                             strengths: Optional[CoyoteStrengths] = None,
@@ -415,11 +562,11 @@ class CoyoteDevice(OutputDevice, QObject):
                 self.strengths.channel_a = strengths.channel_a
                 self.strengths.channel_b = strengths.channel_b
 
-            return
+            return False
 
         if not strengths and not pulses:
             logger.warning(f"{LOG_PREFIX} send_command called with no data")
-            return
+            return False
 
         # Determine strength interpretation (default absolute set if new strength provided)
         if strengths:
@@ -488,7 +635,7 @@ class CoyoteDevice(OutputDevice, QObject):
             try:
                 await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
                 self.sequence_number = (self.sequence_number + 1) % SEQUENCE_MODULO  # Wrap seq at 4 bits (0-15)
-                return  # Success
+                return True  # Success
             except Exception as e:
                 last_error = e
                 if attempt < max_retries - 1:
@@ -497,6 +644,7 @@ class CoyoteDevice(OutputDevice, QObject):
         
         # All retries exhausted
         logger.error(f"{LOG_PREFIX} Failed to send command after {max_retries} retries: {last_error}")
+        return False
     
     async def _disconnect_client(self):
         """Internal method to disconnect the Bluetooth client without shutting down the loop"""
@@ -530,6 +678,8 @@ class CoyoteDevice(OutputDevice, QObject):
     def reset_connection(self):
         """Temporary disconnect for resetting connection (reconnect will happen automatically)"""
         logger.info(f"{LOG_PREFIX} Reset connection requested")
+        self._scan_attempt_counter = 0
+        self._next_scan_time = 0.0
         self._force_disconnect = True  # Signal the connection loop to disconnect temporarily
 
     async def update_loop(self):

@@ -194,6 +194,7 @@ coyote_texture_max_hz = Setting("coyote/texture_max_hz", 5.0, float)
 coyote_texture_depth_fraction = Setting("coyote/texture_depth_fraction", 0.5, float)
 coyote_jitter_limit_fraction = Setting("coyote/jitter_limit_fraction", 0.5, float)
 coyote_residual_bound = Setting("coyote/residual_bound", 0.49, float)
+coyote_last_device_address = Setting("coyote/last_device_address", "", str)
 
 # Pattern preferences - we'll store this as a JSON string and convert to dict
 import json
