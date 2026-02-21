@@ -67,6 +67,7 @@ class CoyoteDevice(OutputDevice, QObject):
         self._last_scan_elapsed = 0.0
         self._scan_failure_streak = 0
         self._connect_failure_streak = 0
+        self._logged_first_send_payload = False
         
         # Start connection process
         self._start_connection_loop()
@@ -153,12 +154,19 @@ class CoyoteDevice(OutputDevice, QObject):
                         if self._using_cached_address and self._last_device_address:
                             self._cached_connect_failure_count += 1
                             self._skip_cached_reconnect_scans = max(self._skip_cached_reconnect_scans, 2)
-                            logger.warning(
-                                f"{LOG_PREFIX} Cached address connect timed out "
-                                f"({self._cached_connect_failure_count}/{self._cached_connect_failure_limit}); "
-                                f"clearing cached address and forcing fresh discovery"
-                            )
-                            self._remember_device_address(None)
+                            if self._cached_connect_failure_count >= self._cached_connect_failure_limit:
+                                logger.warning(
+                                    f"{LOG_PREFIX} Cached address connect timed out "
+                                    f"({self._cached_connect_failure_count}/{self._cached_connect_failure_limit}); "
+                                    f"clearing cached address and forcing fresh discovery"
+                                )
+                                self._remember_device_address(None)
+                            else:
+                                logger.warning(
+                                    f"{LOG_PREFIX} Cached address connect timed out "
+                                    f"({self._cached_connect_failure_count}/{self._cached_connect_failure_limit}); "
+                                    f"keeping cached address for fast retry"
+                                )
                             self._using_cached_address = False
                         # After repeated timeouts, force the Windows BLE scanner refresh path
                         # on the next scan attempt - equivalent to a manual BT toggle
@@ -509,7 +517,10 @@ class CoyoteDevice(OutputDevice, QObject):
             logger.info(f"{LOG_PREFIX} Scanning for device: {self.device_name}")
             target_name = self.device_name.lower()
             target_prefix = "47l121"
-            target_service_uuid = MAIN_SERVICE_UUID.lower()
+            target_service_uuids = {
+                MAIN_SERVICE_UUID.lower(),
+                "00001812-0000-1000-8000-00805f9b34fb",
+            }
 
             def _is_target(device, advertisement_data=None) -> bool:
                 dev_name = (getattr(device, 'name', None) or "").lower()
@@ -521,19 +532,42 @@ class CoyoteDevice(OutputDevice, QObject):
                     if adv_name == target_name or adv_name.startswith(target_prefix):
                         return True
                     adv_uuids = [u.lower() for u in (getattr(advertisement_data, 'service_uuids', None) or [])]
-                    if target_service_uuid in adv_uuids:
+                    if any(uuid in target_service_uuids for uuid in adv_uuids):
                         return True
 
                 return False
 
-            deferred_cached_address = self._last_device_address if sys.platform.startswith("win") else None
+            should_try_cached_address = bool(self._last_device_address and self._skip_cached_reconnect_scans <= 0)
+            deferred_cached_address = None
+
+            if should_try_cached_address:
+                if sys.platform.startswith("win") and self._scan_failure_streak < 2:
+                    logger.info(f"{LOG_PREFIX} Deferring cached-address reconnect until after fresh scans on Windows")
+                    deferred_cached_address = self._last_device_address
+                    should_try_cached_address = False
+            elif self._last_device_address and self._skip_cached_reconnect_scans > 0:
+                logger.info(
+                    f"{LOG_PREFIX} Skipping cached-address reconnect this scan "
+                    f"({self._skip_cached_reconnect_scans} scan(s) remaining)"
+                )
+                self._skip_cached_reconnect_scans -= 1
+
+            if should_try_cached_address:
+                try:
+                    logger.info(f"{LOG_PREFIX} Trying direct reconnect to known address: {self._last_device_address}")
+                    self.client = self._create_client(self._last_device_address)
+                    self._using_cached_address = True
+                    return _finish(True)
+                except Exception as e:
+                    self._using_cached_address = False
+                    logger.debug(f"{LOG_PREFIX} Direct address reconnect setup failed: {e}")
 
             # Try filter-based scan that can match advertisement local name / prefix / service UUID
             try:
                 def _matches(device, advertisement_data):
                     return _is_target(device, advertisement_data)
 
-                device = await BleakScanner.find_device_by_filter(_matches, timeout=2.0)
+                device = await BleakScanner.find_device_by_filter(_matches, timeout=5.0)
                 if device:
                     logger.info(f"{LOG_PREFIX} Device found via advertisement filter: {device.name} ({device.address})")
                     self._remember_device_address(device.address)
@@ -545,7 +579,7 @@ class CoyoteDevice(OutputDevice, QObject):
 
             # Run discover() every attempt for consistency and to avoid stale conditional branches.
             try:
-                devices = await BleakScanner.discover(timeout=2.0)
+                devices = await BleakScanner.discover(timeout=5.0)
                 nearby = [f"{dev.name} ({dev.address})" for dev in devices if dev.name and dev.name.startswith("47L")]
                 if nearby:
                     logger.info(f"{LOG_PREFIX} Nearby 47L devices: {', '.join(nearby)}")
@@ -560,7 +594,7 @@ class CoyoteDevice(OutputDevice, QObject):
                 logger.info(f"{LOG_PREFIX} Discover scan error: {e}")
 
             try:
-                device = await BleakScanner.find_device_by_name(self.device_name, timeout=2.0)
+                device = await BleakScanner.find_device_by_name(self.device_name, timeout=5.0)
                 if device:
                     logger.info(f"{LOG_PREFIX} Device found by name: {device.name} ({device.address})")
                     self._remember_device_address(device.address)
@@ -710,6 +744,12 @@ class CoyoteDevice(OutputDevice, QObject):
         max_retries = 3
         retry_delay = 0.05  # 50ms between retries
         last_error = None
+
+        if not self._logged_first_send_payload:
+            logger.debug(
+                f"{LOG_PREFIX} First send payload at {time.time():.6f}, len(command)={len(command)}"
+            )
+            self._logged_first_send_payload = True
         
         for attempt in range(max_retries):
             try:
