@@ -66,6 +66,7 @@ class CoyoteDevice(OutputDevice, QObject):
         self._scan_attempt_counter = 0
         self._last_scan_elapsed = 0.0
         self._scan_failure_streak = 0
+        self._connect_failure_streak = 0
         
         # Start connection process
         self._start_connection_loop()
@@ -138,14 +139,17 @@ class CoyoteDevice(OutputDevice, QObject):
                             await self._recover_from_transient_failure("missing client")
                             continue
 
-                        connect_timeout_seconds = 12.0
+                        # 8s is enough; 12s just keeps the user waiting longer per stuck attempt
+                        connect_timeout_seconds = 8.0
                         await asyncio.wait_for(self.client.connect(), timeout=connect_timeout_seconds)
                         self._cached_connect_failure_count = 0
+                        self._connect_failure_streak = 0
                         self._using_cached_address = False
                         logger.info(f"{LOG_PREFIX} Connected, discovering services...")
                         self.connection_stage = ConnectionStage.SERVICE_DISCOVERY
                     except asyncio.TimeoutError:
                         logger.error(f"{LOG_PREFIX} Connection timed out after {connect_timeout_seconds:.1f}s")
+                        self._connect_failure_streak += 1
                         if self._using_cached_address and self._last_device_address:
                             self._cached_connect_failure_count += 1
                             self._skip_cached_reconnect_scans = max(self._skip_cached_reconnect_scans, 2)
@@ -156,9 +160,18 @@ class CoyoteDevice(OutputDevice, QObject):
                             )
                             self._remember_device_address(None)
                             self._using_cached_address = False
-                        await self._recover_from_transient_failure("connect timeout")
+                        # After repeated timeouts, force the Windows BLE scanner refresh path
+                        # on the next scan attempt - equivalent to a manual BT toggle
+                        if sys.platform.startswith("win") and self._connect_failure_streak >= 2:
+                            logger.warning(
+                                f"{LOG_PREFIX} {self._connect_failure_streak} consecutive connect timeouts; "
+                                f"forcing Windows BLE scanner refresh on next scan"
+                            )
+                            self._scan_failure_streak = max(self._scan_failure_streak, 2)
+                        await self._recover_from_transient_failure("connect timeout", extra_delay=self._connect_failure_streak)
                     except Exception as e:
                         logger.error(f"{LOG_PREFIX} Connection failed: {e}")
+                        self._connect_failure_streak += 1
                         if self._using_cached_address and self._last_device_address:
                             self._cached_connect_failure_count += 1
                             self._skip_cached_reconnect_scans = max(self._skip_cached_reconnect_scans, 2)
@@ -175,7 +188,13 @@ class CoyoteDevice(OutputDevice, QObject):
                                     f"keeping cached address for fast retry"
                                 )
                             self._using_cached_address = False
-                        await self._recover_from_transient_failure("connect failure")
+                        if sys.platform.startswith("win") and self._connect_failure_streak >= 2:
+                            logger.warning(
+                                f"{LOG_PREFIX} {self._connect_failure_streak} consecutive connect failures; "
+                                f"forcing Windows BLE scanner refresh on next scan"
+                            )
+                            self._scan_failure_streak = max(self._scan_failure_streak, 2)
+                        await self._recover_from_transient_failure("connect failure", extra_delay=self._connect_failure_streak)
                         
                 elif self.connection_stage == ConnectionStage.SERVICE_DISCOVERY:
                     try:
@@ -267,23 +286,57 @@ class CoyoteDevice(OutputDevice, QObject):
         strengths = CoyoteStrengths(channel_a=0, channel_b=0)
         return await self.send_command(strengths=strengths)
 
-    async def _recover_from_transient_failure(self, reason: str):
-        """Handle recoverable BLE failures without permanently stopping auto-reconnect."""
+    async def _recover_from_transient_failure(self, reason: str, extra_delay: int = 0):
+        """Handle recoverable BLE failures without permanently stopping auto-reconnect.
+
+        extra_delay: number of consecutive failures (used to scale backoff on Windows
+        to give WinRT time to actually release the stale connection).
+        """
         logger.info(f"{LOG_PREFIX} Recovering from transient failure: {reason}")
         await self._disconnect_client()
         self._scan_attempt_counter = 0
         self.connection_stage = ConnectionStage.SCANNING
-        self._next_scan_time = time.time() + 1.0
+        # On Windows, scale backoff with failure streak so WinRT has time to release
+        # the stale connection before we attempt again (min 1s, max 5s)
+        if sys.platform.startswith("win") and extra_delay > 0:
+            backoff = min(5.0, 1.0 + extra_delay * 1.0)
+            logger.info(f"{LOG_PREFIX} Windows BLE backoff {backoff:.1f}s (streak={extra_delay})")
+            # Running an active BleakScanner during the backoff nudges WinRT to release
+            # the stale GATT session -- this is what actually clears WinRT connection
+            # state, not just the scan cache. Equivalent to a soft BT adapter poke.
+            try:
+                logger.info(f"{LOG_PREFIX} Running active BLE scan during backoff to release WinRT GATT session")
+                async with BleakScanner(scanning_mode="active") as _:
+                    await asyncio.sleep(backoff)
+                return  # _next_scan_time already irrelevant; return immediately to SCANNING
+            except Exception as e:
+                logger.debug(f"{LOG_PREFIX} Active scan during backoff failed: {e}")
+        else:
+            backoff = 1.0
+        self._next_scan_time = time.time() + backoff
 
     def _create_client(self, device_or_address):
         """Create a Bleak client with conservative Windows behavior to reduce stale-cache issues."""
+        def _on_disconnect(client):
+            logger.warning(f"{LOG_PREFIX} BleakClient disconnected callback fired")
+
         if sys.platform.startswith("win"):
             try:
-                return BleakClient(device_or_address, winrt={"use_cached_services": False})
+                return BleakClient(
+                    device_or_address,
+                    winrt={"use_cached_services": False},
+                    disconnected_callback=_on_disconnect,
+                )
             except TypeError:
                 logger.debug(f"{LOG_PREFIX} Bleak backend does not support winrt kwargs; falling back")
-                return BleakClient(device_or_address)
-        return BleakClient(device_or_address)
+                try:
+                    return BleakClient(device_or_address, disconnected_callback=_on_disconnect)
+                except TypeError:
+                    return BleakClient(device_or_address)
+        try:
+            return BleakClient(device_or_address, disconnected_callback=_on_disconnect)
+        except TypeError:
+            return BleakClient(device_or_address)
 
     def _remember_device_address(self, address: Optional[str]):
         self._last_device_address = address
@@ -473,28 +526,7 @@ class CoyoteDevice(OutputDevice, QObject):
 
                 return False
 
-            should_try_cached_address = bool(self._last_device_address and self._skip_cached_reconnect_scans <= 0)
-            if should_try_cached_address and sys.platform.startswith("win") and self._scan_failure_streak < 2:
-                should_try_cached_address = False
-                logger.info(
-                    f"{LOG_PREFIX} Deferring cached-address reconnect until after fresh scans on Windows"
-                )
-
-            if should_try_cached_address:
-                try:
-                    logger.info(f"{LOG_PREFIX} Trying direct reconnect to known address: {self._last_device_address}")
-                    self.client = self._create_client(self._last_device_address)
-                    self._using_cached_address = True
-                    return _finish(True)
-                except Exception as e:
-                    self._using_cached_address = False
-                    logger.debug(f"{LOG_PREFIX} Direct address reconnect setup failed: {e}")
-            elif self._last_device_address and self._skip_cached_reconnect_scans > 0:
-                logger.info(
-                    f"{LOG_PREFIX} Skipping cached-address reconnect this scan "
-                    f"({self._skip_cached_reconnect_scans} scan(s) remaining)"
-                )
-                self._skip_cached_reconnect_scans -= 1
+            deferred_cached_address = self._last_device_address if sys.platform.startswith("win") else None
 
             # Try filter-based scan that can match advertisement local name / prefix / service UUID
             try:
@@ -571,8 +603,17 @@ class CoyoteDevice(OutputDevice, QObject):
                                     return _finish(True)
                 except Exception as e:
                     logger.info(f"{LOG_PREFIX} Scanner refresh error: {e}")
-            
-            logger.warning(f"{LOG_PREFIX} Device {self.device_name} not found. Check device is powered on and Bluetooth may need to be toggled.")
+
+            if deferred_cached_address:
+                try:
+                    logger.info(f"{LOG_PREFIX} Trying direct reconnect to known address: {deferred_cached_address}")
+                    self.client = self._create_client(deferred_cached_address)
+                    self._using_cached_address = True
+                    return _finish(True)
+                except Exception as e:
+                    logger.debug(f"{LOG_PREFIX} Cached-address fallback setup failed: {e}")
+
+            logger.warning(f"{LOG_PREFIX} Device {self.device_name} not found. Check device power and proximity.")
             return _finish(False)
             
         except Exception as e:
@@ -701,7 +742,11 @@ class CoyoteDevice(OutputDevice, QObject):
                 logger.debug(f"{LOG_PREFIX} Error sending zero pulses during disconnect: {e}")
             
             try:
-                await self.client.disconnect()
+                # Timeout prevents WinRT from blocking the reconnect loop when the
+                # GATT session is already in a stuck/closed state.
+                await asyncio.wait_for(self.client.disconnect(), timeout=5.0)
+            except asyncio.TimeoutError:
+                logger.warning(f"{LOG_PREFIX} disconnect() timed out (WinRT stale session); forcing cleanup")
             except Exception as e:
                 logger.debug(f"{LOG_PREFIX} Error disconnecting client: {e}")
         
