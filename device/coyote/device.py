@@ -133,30 +133,11 @@ class CoyoteDevice(OutputDevice, QObject):
                         
                 elif self.connection_stage == ConnectionStage.CONNECTING:
                     try:
-                        if not self.client:
-                            logger.error(f"{LOG_PREFIX} No BLE client available during CONNECTING")
-                            await self._recover_from_transient_failure("missing client")
-                            continue
-
-                        connect_timeout_seconds = 12.0
-                        await asyncio.wait_for(self.client.connect(), timeout=connect_timeout_seconds)
+                        await self.client.connect()
                         self._cached_connect_failure_count = 0
                         self._using_cached_address = False
                         logger.info(f"{LOG_PREFIX} Connected, discovering services...")
                         self.connection_stage = ConnectionStage.SERVICE_DISCOVERY
-                    except asyncio.TimeoutError:
-                        logger.error(f"{LOG_PREFIX} Connection timed out after {connect_timeout_seconds:.1f}s")
-                        if self._using_cached_address and self._last_device_address:
-                            self._cached_connect_failure_count += 1
-                            self._skip_cached_reconnect_scans = max(self._skip_cached_reconnect_scans, 2)
-                            logger.warning(
-                                f"{LOG_PREFIX} Cached address connect timed out "
-                                f"({self._cached_connect_failure_count}/{self._cached_connect_failure_limit}); "
-                                f"clearing cached address and forcing fresh discovery"
-                            )
-                            self._remember_device_address(None)
-                            self._using_cached_address = False
-                        await self._recover_from_transient_failure("connect timeout")
                     except Exception as e:
                         logger.error(f"{LOG_PREFIX} Connection failed: {e}")
                         if self._using_cached_address and self._last_device_address:
@@ -473,14 +454,7 @@ class CoyoteDevice(OutputDevice, QObject):
 
                 return False
 
-            should_try_cached_address = bool(self._last_device_address and self._skip_cached_reconnect_scans <= 0)
-            if should_try_cached_address and sys.platform.startswith("win") and self._scan_failure_streak < 2:
-                should_try_cached_address = False
-                logger.info(
-                    f"{LOG_PREFIX} Deferring cached-address reconnect until after fresh scans on Windows"
-                )
-
-            if should_try_cached_address:
+            if self._last_device_address and self._skip_cached_reconnect_scans <= 0:
                 try:
                     logger.info(f"{LOG_PREFIX} Trying direct reconnect to known address: {self._last_device_address}")
                     self.client = self._create_client(self._last_device_address)
@@ -546,29 +520,16 @@ class CoyoteDevice(OutputDevice, QObject):
                     )
                     async with BleakScanner(scanning_mode="active") as scanner:
                         await asyncio.sleep(4.0)
-                        discovered_with_adv = getattr(scanner, 'discovered_devices_and_advertisement_data', {})
-                        if discovered_with_adv:
-                            for _, (dev, adv) in discovered_with_adv.items():
-                                if _is_target(dev, adv):
-                                    logger.info(
-                                        f"{LOG_PREFIX} Device found after scanner refresh: "
-                                        f"{dev.name} ({dev.address})"
-                                    )
-                                    self._remember_device_address(dev.address)
-                                    self.client = self._create_client(dev.address)
-                                    self._using_cached_address = False
-                                    return _finish(True)
-                        else:
-                            for dev in scanner.discovered_devices:
-                                if _is_target(dev):
-                                    logger.info(
-                                        f"{LOG_PREFIX} Device found after scanner refresh: "
-                                        f"{dev.name} ({dev.address})"
-                                    )
-                                    self._remember_device_address(dev.address)
-                                    self.client = self._create_client(dev.address)
-                                    self._using_cached_address = False
-                                    return _finish(True)
+                        for dev in scanner.discovered_devices:
+                            if _is_target(dev):
+                                logger.info(
+                                    f"{LOG_PREFIX} Device found after scanner refresh: "
+                                    f"{dev.name} ({dev.address})"
+                                )
+                                self._remember_device_address(dev.address)
+                                self.client = self._create_client(dev.address)
+                                self._using_cached_address = False
+                                return _finish(True)
                 except Exception as e:
                     logger.info(f"{LOG_PREFIX} Scanner refresh error: {e}")
             
