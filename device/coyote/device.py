@@ -140,8 +140,10 @@ class CoyoteDevice(OutputDevice, QObject):
                             await self._recover_from_transient_failure("missing client")
                             continue
 
-                        # 8s is enough; 12s just keeps the user waiting longer per stuck attempt
-                        connect_timeout_seconds = 8.0
+                        # Windows can need longer to establish GATT after scan discovery.
+                        # Keep non-Windows tighter for responsiveness.
+                        connect_timeout_seconds = 15.0 if sys.platform.startswith("win") else 8.0
+                        logger.info(f"{LOG_PREFIX} Connect timeout configured to {connect_timeout_seconds:.1f}s")
                         await asyncio.wait_for(self.client.connect(), timeout=connect_timeout_seconds)
                         self._cached_connect_failure_count = 0
                         self._connect_failure_streak = 0
