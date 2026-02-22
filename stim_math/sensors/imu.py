@@ -2,7 +2,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ahrs import Quaternion
+try:
+    from ahrs import Quaternion
+except ImportError:
+    from ahrs.common.quaternion import Quaternion
 from ahrs.common.orientation import acc2q
 from ahrs.filters import Madgwick
 
