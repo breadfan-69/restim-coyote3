@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayou
                             QGraphicsView, QGraphicsScene, QGraphicsLineItem, QSpinBox,
                             QGraphicsRectItem, QToolTip, QGraphicsEllipseItem, QPushButton)
 from PySide6.QtCore import QSettings, Qt, QTimer
-from PySide6.QtGui import QPen, QColor, QBrush, QPainterPath
+from PySide6.QtGui import QPen, QColor, QBrush, QPainterPath, QFontMetrics
 from device.coyote.device import CoyoteDevice, CoyotePulse, CoyotePulses, CoyoteStrengths
 from qt_ui import settings
 from qt_ui.axis_controller import AxisController
@@ -346,6 +346,8 @@ class ChannelControl:
         self.volume_slider.valueChanged.connect(self.on_volume_changed)
         self.volume_label = QLabel()
         self.volume_label.setAlignment(Qt.AlignHCenter)
+        self.volume_label.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred)
+        self._update_volume_label_width(self.config.strength_max_setting.get())
         volume_layout.addWidget(self.volume_slider)
         volume_layout.addWidget(self.volume_label)
         group_layout.addLayout(volume_layout)
@@ -424,6 +426,7 @@ class ChannelControl:
 
     def on_strength_max_changed(self, value: int):
         self.config.strength_max_setting.set(value)
+        self._update_volume_label_width(value)
 
         current_value = self.volume_slider.value() if self.volume_slider else 0
         if self.volume_slider:
@@ -436,6 +439,13 @@ class ChannelControl:
             current_value = clamped_value
 
         self.parent.update_channel_strength(self, current_value)
+
+    def _update_volume_label_width(self, max_strength: int):
+        if not self.volume_label:
+            return
+        max_text = f"{max_strength} (100%)"
+        metrics = QFontMetrics(self.volume_label.font())
+        self.volume_label.setFixedWidth(metrics.horizontalAdvance(max_text) + 8)
 
     def on_pulse_min_changed(self, value: int):
         if self.pulse_min is None or self.pulse_max is None:
