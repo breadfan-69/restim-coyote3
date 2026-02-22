@@ -29,13 +29,13 @@ echo.
 echo Building executable...
 "%PYTHON_EXE%" -m PyInstaller restim.spec --clean --noconfirm
 
-if exist "dist\restim\restim.exe" (
+if exist "dist\restim-coyote3\restim-coyote3.exe" (
     echo.
     echo ✓ BUILD SUCCESSFUL!
     echo.
     echo Launching application...
     timeout /t 2 /nobreak
-    start "" "dist\restim\restim.exe"
+    start "" "dist\restim-coyote3\restim-coyote3.exe"
 ) else (
     echo.
     echo ✗ BUILD FAILED - exe not found
