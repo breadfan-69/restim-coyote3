@@ -457,15 +457,52 @@ class Window(QMainWindow, Ui_MainWindow):
             set_visible(tab, tab in visible)
 
         # set safety limits
-        self.tab_carrier.set_safety_limits(config.min_frequency, config.max_frequency)
-        self.tab_pulse_settings.set_safety_limits(config.min_frequency, config.max_frequency)
+        # Carrier UI ranges should match C0 policy per device family.
+        if config.device_type == DeviceType.AUDIO_THREE_PHASE:
+            if config.waveform_type == WaveformType.CONTINUOUS:
+                carrier_min, carrier_max = 500, 1500
+            else:
+                carrier_min, carrier_max = 500, 2000
+        elif config.device_type in (DeviceType.FOCSTIM_THREE_PHASE, DeviceType.FOCSTIM_FOUR_PHASE):
+            carrier_min, carrier_max = 500, 2000
+        elif config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
+            carrier_min, carrier_max = 1, 200
+        else:
+            carrier_min, carrier_max = config.min_frequency, config.max_frequency
+
+        self.tab_carrier.set_safety_limits(carrier_min, carrier_max)
+        self.tab_pulse_settings.set_safety_limits(carrier_min, carrier_max)
         self.tab_a_b_testing.set_safety_limits(config.min_frequency, config.max_frequency)
 
         # configure tcode router
-        if config.waveform_type == WaveformType.CONTINUOUS:
+        # Continuous carrier tab is only the active carrier control for audio continuous mode.
+        # All other supported modes use pulse carrier settings.
+        if config.device_type == DeviceType.AUDIO_THREE_PHASE and config.waveform_type == WaveformType.CONTINUOUS:
             self.tcode_command_router.set_carrier_axis(self.tab_carrier.axis_carrier)
-        if config.waveform_type == WaveformType.PULSE_BASED:
+        else:
             self.tcode_command_router.set_carrier_axis(self.tab_pulse_settings.axis_carrier_frequency)
+
+        if config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
+            self.tcode_command_router.set_carrier_limits(1, 200)
+            self.tcode_command_router.set_allowed_axes({
+                AxisEnum.POSITION_ALPHA,
+                AxisEnum.POSITION_BETA,
+                AxisEnum.VOLUME_API,
+                AxisEnum.PULSE_FREQUENCY,
+            })
+        elif config.device_type == DeviceType.AUDIO_THREE_PHASE:
+            if config.waveform_type == WaveformType.CONTINUOUS:
+                self.tcode_command_router.set_carrier_limits(500, 1500)
+            else:
+                self.tcode_command_router.set_carrier_limits(500, 2000)
+            self.tcode_command_router.set_allowed_axes(None)
+        elif config.device_type in (DeviceType.FOCSTIM_THREE_PHASE, DeviceType.FOCSTIM_FOUR_PHASE):
+            self.tcode_command_router.set_carrier_limits(500, 2000)
+            self.tcode_command_router.set_allowed_axes(None)
+        else:
+            self.tcode_command_router.set_allowed_axes(None)
+
+        self.tcode_command_router.set_pulse_frequency_limits(1, 100)
 
         # populate motion generator and patterns combobox
         if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.NEOSTIM_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE, DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):

@@ -1,8 +1,6 @@
 import asyncio
-import concurrent.futures
-import inspect
 import logging
-from typing import Any, Optional, cast
+from typing import Optional
 import time
 import threading
 import sys
@@ -35,14 +33,14 @@ from device.coyote.algorithm import CoyoteAlgorithm, CoyoteDigletAlgorithm
 logger = logging.getLogger('restim.coyote')
 
 class CoyoteDevice(OutputDevice, QObject):
-    parameters: CoyoteParams
+    parameters: Optional[CoyoteParams] = None
     connection_status_changed = Signal(bool, str)  # Connected, Stage
     battery_level_changed = Signal(int)
     parameters_changed = Signal()
     power_levels_changed = Signal(CoyoteStrengths)
     pulse_sent = Signal(CoyotePulses)
 
-    def __init__(self, device_name: str, parameters: CoyoteParams):
+    def __init__(self, device_name: str, parameters: Optional[CoyoteParams] = None):
         OutputDevice.__init__(self)
         QObject.__init__(self)
         self.device_name = device_name
@@ -52,6 +50,15 @@ class CoyoteDevice(OutputDevice, QObject):
         self.connection_stage = ConnectionStage.DISCONNECTED
         self.strengths = CoyoteStrengths(channel_a=0, channel_b=0)
         self.battery_level = 100
+        if parameters is None:
+            parameters = CoyoteParams(
+                channel_a_limit=int(ui_settings.coyote_channel_a_limit.get()),
+                channel_b_limit=int(ui_settings.coyote_channel_b_limit.get()),
+                channel_a_freq_balance=int(ui_settings.coyote_channel_a_freq_balance.get()),
+                channel_b_freq_balance=int(ui_settings.coyote_channel_b_freq_balance.get()),
+                channel_a_intensity_balance=int(ui_settings.coyote_channel_a_intensity_balance.get()),
+                channel_b_intensity_balance=int(ui_settings.coyote_channel_b_intensity_balance.get()),
+            )
         self.parameters = parameters
         self._event_loop = None
         self.sequence_number = 1
@@ -70,9 +77,6 @@ class CoyoteDevice(OutputDevice, QObject):
         self._scan_failure_streak = 0
         self._connect_failure_streak = 0
         self._logged_first_send_payload = False
-        self._first_active_power_seen: bool = False
-        self._last_battery_poll: float = 0.0
-        self._last_parameter_resend: float = 0.0
         
         # Start connection process
         self._start_connection_loop()
@@ -103,7 +107,6 @@ class CoyoteDevice(OutputDevice, QObject):
                     await self._disconnect_client()
                     self._scan_attempt_counter = 0
                     self._next_scan_time = 0.0
-                    self._first_active_power_seen = False
                     self.connection_stage = ConnectionStage.DISCONNECTED
                     continue
                 
@@ -112,7 +115,6 @@ class CoyoteDevice(OutputDevice, QObject):
                     (not self.client or not self.client.is_connected)):
                     logger.warning(f"{LOG_PREFIX} Device disconnected unexpectedly")
                     await self._disconnect_client()
-                    self._first_active_power_seen = False
                     self.connection_stage = ConnectionStage.DISCONNECTED
                     continue
 
@@ -215,21 +217,12 @@ class CoyoteDevice(OutputDevice, QObject):
                         
                 elif self.connection_stage == ConnectionStage.SERVICE_DISCOVERY:
                     try:
-                        client = self.client
-                        if not client or not client.is_connected:
-                            logger.error(f"{LOG_PREFIX} Lost client before service discovery")
-                            await self._recover_from_transient_failure("service discovery missing client")
-                            continue
-
-                        get_services = getattr(client, "get_services", None)
-                        if callable(get_services):
-                            services_result = get_services()
-                            services = await services_result if inspect.isawaitable(services_result) else services_result
-                            services_any = cast(Any, services)
-                            service_count = len(list(services_any))
+                        if hasattr(self.client, "get_services"):
+                            services = await self.client.get_services()
+                            service_count = len(list(services))
                         else:
-                            services = getattr(client, "services", None)
-                            service_count = len(list(services)) if services else 0
+                            services = self.client.services
+                            service_count = len(list(services))
 
                         if service_count > 0:
                             logger.info(f"{LOG_PREFIX} Services discovered ({service_count}), waiting for characteristics to load...")
@@ -279,6 +272,11 @@ class CoyoteDevice(OutputDevice, QObject):
                     # resent on every reconnection, and periodically to ensure parameters survive
                     # any device state resets
                     current_time = time.time()
+                    if not hasattr(self, '_last_battery_poll'):
+                        self._last_battery_poll = current_time
+                    if not hasattr(self, '_last_parameter_resend'):
+                        self._last_parameter_resend = current_time
+                    
                     if current_time - self._last_battery_poll >= 10:
                         await self._read_battery_level()
                         self._last_battery_poll = current_time
@@ -365,7 +363,7 @@ class CoyoteDevice(OutputDevice, QObject):
         self._skip_cached_reconnect_scans = 0
         ui_settings.coyote_last_device_address.set(address or "")
 
-    def start_updates(self, algorithm: Optional[Any]):
+    def start_updates(self, algorithm: Optional[any]):
         logger.info(f"{LOG_PREFIX} start_updates called")
         self.algorithm = algorithm
         self.running = True
@@ -443,7 +441,7 @@ class CoyoteDevice(OutputDevice, QObject):
                 return
 
             # Track if this is the absolute first CMD_ACTIVE_POWER after connection
-            if not self._first_active_power_seen:
+            if not hasattr(self, '_first_active_power_seen') or not self._first_active_power_seen:
                 power_a = 0
                 power_b = 0
                 self._first_active_power_seen = True
@@ -465,13 +463,8 @@ class CoyoteDevice(OutputDevice, QObject):
             logger.warning(f"{LOG_PREFIX} Unknown notification type: 0x{command_id:02X} (seq={sequence_number})")
             logger.warning(f"{LOG_PREFIX} Raw notification: {list(data)}")
 
-    async def _send_parameters(self) -> bool:
+    async def _send_parameters(self):
         """Send device parameters"""
-        client = self.client
-        if not client or not client.is_connected:
-            logger.warning(f"{LOG_PREFIX} Cannot sync parameters while disconnected")
-            return False
-
         logger.info(
             f"{LOG_PREFIX} Syncing parameters - "
             f"Limits: A={self.parameters.channel_a_limit}, B={self.parameters.channel_b_limit}, "
@@ -496,7 +489,7 @@ class CoyoteDevice(OutputDevice, QObject):
         
         for attempt in range(max_retries):
             try:
-                await client.write_gatt_char(WRITE_CHAR_UUID, command)
+                await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
                 return True  # Success
             except Exception as e:
                 last_error = e
@@ -511,22 +504,12 @@ class CoyoteDevice(OutputDevice, QObject):
     async def _subscribe_to_notifications(self, char_uuid: str) -> bool:
         """Subscribe to notifications for a characteristic"""
         try:
-            client = self.client
-            if not client or not client.is_connected:
-                logger.error(f"{LOG_PREFIX} Cannot subscribe to {char_uuid} while disconnected")
-                return False
-
-            services = getattr(client, "services", None)
-            if services is None:
-                logger.error(f"{LOG_PREFIX} Services unavailable while subscribing to {char_uuid}")
-                return False
-
-            char = services.get_characteristic(char_uuid)
+            char = self.client.services.get_characteristic(char_uuid)
             if not char:
                 logger.error(f"{LOG_PREFIX} Characteristic {char_uuid} not found")
                 return False
             
-            await client.start_notify(char_uuid, self._handle_status_notification)
+            await self.client.start_notify(char_uuid, self._handle_status_notification)
             return True
         except Exception as e:
             logger.error(f"{LOG_PREFIX} Failed to subscribe to {char_uuid}: {e}")
@@ -706,8 +689,6 @@ class CoyoteDevice(OutputDevice, QObject):
 
             return False
 
-        client = self.client
-
         if not strengths and not pulses:
             logger.warning(f"{LOG_PREFIX} send_command called with no data")
             return False
@@ -783,7 +764,7 @@ class CoyoteDevice(OutputDevice, QObject):
         
         for attempt in range(max_retries):
             try:
-                await client.write_gatt_char(WRITE_CHAR_UUID, command)
+                await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
                 self.sequence_number = (self.sequence_number + 1) % SEQUENCE_MODULO  # Wrap seq at 4 bits (0-15)
                 return True  # Success
             except Exception as e:
@@ -883,21 +864,5 @@ class CoyoteDevice(OutputDevice, QObject):
             logger.info(f"{LOG_PREFIX} Update loop stopped")
     
     def is_connected_and_running(self) -> bool:
-        return bool(
-            self.connection_stage == ConnectionStage.CONNECTED
-            and self.client
-            and self.client.is_connected
-        )
-
-    def stop(self):
-        """Stop updates and attempt a clean disconnect before app shutdown."""
-        self.stop_updates()
-
-        if self._event_loop and not self._event_loop.is_closed():
-            try:
-                future = asyncio.run_coroutine_threadsafe(self.disconnect(), self._event_loop)
-                future.result(timeout=2.0)
-            except concurrent.futures.TimeoutError:
-                logger.warning(f"{LOG_PREFIX} Timed out waiting for disconnect during stop()")
-            except Exception as e:
-                logger.debug(f"{LOG_PREFIX} stop() disconnect scheduling failed: {e}")
+        return (self.connection_stage == ConnectionStage.CONNECTED and 
+                self.client and self.client.is_connected)

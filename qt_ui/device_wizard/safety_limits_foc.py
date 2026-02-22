@@ -10,6 +10,11 @@ class WizardPageSafetyLimitsFOC(QWizardPage, Ui_WizardPageSafetyLimitsFOC):
         super().__init__(parent)
         self.setupUi(self)
 
+        self.min_frequency_spinbox.setRange(500, 2000)
+        self.max_frequency_spinbox.setRange(500, 2000)
+        self.min_frequency_spinbox.setValue(500)
+        self.max_frequency_spinbox.setValue(2000)
+
         self.waveform_ampltiude_ma_spinbox.setMinimum(limits.WaveformAmpltiudeFOC.min * 1000)
         self.waveform_ampltiude_ma_spinbox.setMaximum(limits.WaveformAmpltiudeFOC.max * 1000)
 

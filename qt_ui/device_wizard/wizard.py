@@ -89,8 +89,22 @@ class DeviceSelectionWizard(QWizard):
                 raise RuntimeError("unknown device type")
 
         if self.currentId() == WizardPage.Page_waveform.value:
+            if self.page_waveform_type.continuous_radio.isChecked():
+                self.page_safety_limits.min_frequency_spinbox.setRange(500, 1500)
+                self.page_safety_limits.max_frequency_spinbox.setRange(500, 1500)
+                self.page_safety_limits.min_frequency_spinbox.setValue(500)
+                self.page_safety_limits.max_frequency_spinbox.setValue(1500)
+            else:
+                self.page_safety_limits.min_frequency_spinbox.setRange(500, 2000)
+                self.page_safety_limits.max_frequency_spinbox.setRange(500, 2000)
+                self.page_safety_limits.min_frequency_spinbox.setValue(500)
+                self.page_safety_limits.max_frequency_spinbox.setValue(2000)
             return WizardPage.Page_limits.value
         elif self.currentId() == WizardPage.Page_focstim_waveform.value:
+            self.page_safety_limits_foc.min_frequency_spinbox.setRange(500, 2000)
+            self.page_safety_limits_foc.max_frequency_spinbox.setRange(500, 2000)
+            self.page_safety_limits_foc.min_frequency_spinbox.setValue(500)
+            self.page_safety_limits_foc.max_frequency_spinbox.setValue(2000)
             return WizardPage.Page_limits_foc.value
         return -1
 
@@ -193,6 +207,17 @@ class DeviceSelectionWizard(QWizard):
         self.page_waveform_type.continuous_radio.setChecked(config.waveform_type == WaveformType.CONTINUOUS)
         self.page_waveform_type.pulse_based_radio.setChecked(config.waveform_type == WaveformType.PULSE_BASED)
         self.page_waveform_type.a_b_radio.setChecked(config.waveform_type == WaveformType.A_B_TESTING)
+
+        if config.device_type == DeviceType.AUDIO_THREE_PHASE and config.waveform_type == WaveformType.CONTINUOUS:
+            self.page_safety_limits.min_frequency_spinbox.setRange(500, 1500)
+            self.page_safety_limits.max_frequency_spinbox.setRange(500, 1500)
+        else:
+            self.page_safety_limits.min_frequency_spinbox.setRange(500, 2000)
+            self.page_safety_limits.max_frequency_spinbox.setRange(500, 2000)
+
+        if config.device_type in (DeviceType.FOCSTIM_THREE_PHASE, DeviceType.FOCSTIM_FOUR_PHASE):
+            self.page_safety_limits_foc.min_frequency_spinbox.setRange(500, 2000)
+            self.page_safety_limits_foc.max_frequency_spinbox.setRange(500, 2000)
 
         self.page_safety_limits.min_frequency_spinbox.setValue(config.min_frequency)
         self.page_safety_limits.max_frequency_spinbox.setValue(config.max_frequency)

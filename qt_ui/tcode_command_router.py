@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import logging
+from typing import Optional, Set
 
 from net.tcode import TCodeCommand
 from stim_math.axis import AbstractAxis
@@ -68,6 +69,9 @@ class TCodeCommandRouter:
         self.vibration_2_left_right_bias = vibration_2_left_right_bias
         self.vibration_2_high_low_bias = vibration_2_high_low_bias
         self.vibration_2_random = vibration_2_random
+        self._carrier_limits_override = None
+        self._pulse_frequency_limits_override = None
+        self._allowed_axes_override: Optional[Set[AxisEnum]] = None
 
         self.mapping = {}
         self.reload_kit()
@@ -103,18 +107,39 @@ class TCodeCommandRouter:
         mapping = {}
         for child in kit.children:
             child: FunscriptKitItem
-            if len(child.tcode_axis_name) == 2:
+            if self._allowed_axes_override is not None and child.axis not in self._allowed_axes_override:
+                continue
+            axis_name = str(child.tcode_axis_name or '')
+            if len(axis_name) == 2:
                 if child.axis in axis_enum_to_axis:
-                    route = Route(axis_enum_to_axis[child.axis], child.limit_min, child.limit_max)
-                    if child.tcode_axis_name not in mapping:
-                        mapping[child.tcode_axis_name] = route
-            elif len(child.tcode_axis_name) != 0:
-                logger.error(f'Invalid T-Code axis name: {child.tcode_axis_name}. Axis name must be 2 chars.')
+                    low = child.limit_min
+                    high = child.limit_max
+                    if child.axis == AxisEnum.CARRIER_FREQUENCY and self._carrier_limits_override is not None:
+                        low, high = self._carrier_limits_override
+                    if child.axis == AxisEnum.PULSE_FREQUENCY and self._pulse_frequency_limits_override is not None:
+                        low, high = self._pulse_frequency_limits_override
+                    route = Route(axis_enum_to_axis[child.axis], low, high)
+                    if axis_name not in mapping:
+                        mapping[axis_name] = route
+            elif len(axis_name) != 0:
+                logger.error(f'Invalid T-Code axis name: {axis_name}. Axis name must be 2 chars.')
 
         self.mapping = mapping
 
     def set_carrier_axis(self, carrier: AbstractAxis):
         self.carrier_frequency = carrier
+        self.reload_kit()
+
+    def set_carrier_limits(self, low: float, high: float):
+        self._carrier_limits_override = (low, high)
+        self.reload_kit()
+
+    def set_pulse_frequency_limits(self, low: float, high: float):
+        self._pulse_frequency_limits_override = (low, high)
+        self.reload_kit()
+
+    def set_allowed_axes(self, allowed_axes: Optional[Set[AxisEnum]]):
+        self._allowed_axes_override = allowed_axes
         self.reload_kit()
 
     def route_command(self, cmd: TCodeCommand):

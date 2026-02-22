@@ -8,5 +8,10 @@ class WizardPageSafetyLimits(QWizardPage, Ui_WizardPageSafetyLimits):
         super().__init__(parent)
         self.setupUi(self)
 
+        self.min_frequency_spinbox.setRange(500, 2000)
+        self.max_frequency_spinbox.setRange(500, 2000)
+        self.min_frequency_spinbox.setValue(500)
+        self.max_frequency_spinbox.setValue(2000)
+
     def validatePage(self) -> bool:
         return self.min_frequency_spinbox.value() < self.max_frequency_spinbox.value()

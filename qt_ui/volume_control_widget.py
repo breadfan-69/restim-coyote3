@@ -74,6 +74,7 @@ class VolumeControlWidget(QtWidgets.QWidget, Ui_VolumeControlForm):
         self.doubleSpinBox_volume.valueChanged.connect(self.refresh_message)
 
         self.volume_widget = volume_bar
+        self.volume_widget.masterVolumeChanged.connect(lambda value: self.doubleSpinBox_volume.setValue(value))
 
     def timeout(self):
         t = time.time()
