@@ -12,18 +12,55 @@ from PySide6.QtGui import QPen, QColor, QBrush, QPainterPath, QFontMetrics
 from device.coyote.device import CoyoteDevice, CoyotePulse, CoyotePulses, CoyoteStrengths
 from qt_ui import settings
 from qt_ui.axis_controller import AxisController
-from stim_math.axis import create_constant_axis
+from stim_math.axis import AbstractAxis, create_constant_axis
 
 class CoyoteSettingsWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.device: Optional[CoyoteDevice] = None
         self.channel_controls: Dict[str, ChannelControl] = {}
+        self._shared_pulse_frequency_axis = self._create_shared_pulse_frequency_axis()
         self.coyote_logger = logging.getLogger('restim.coyote')
         self._base_log_level = self.coyote_logger.getEffectiveLevel()
         self.graph_window = settings.coyote_graph_window
         self.setupUi()
         self.apply_debug_logging(settings.coyote_debug_logging.get())
+
+    def _create_shared_pulse_frequency_axis(self):
+        parent = self
+
+        class SharedCoyotePulseFrequencyAxis(AbstractAxis):
+            def interpolate(self, _time_s):
+                controllers = (
+                    parent.get_channel_a_pulse_frequency_controller(),
+                    parent.get_channel_b_pulse_frequency_controller(),
+                )
+                values = []
+                for controller in controllers:
+                    if controller is not None and controller.control is not None:
+                        values.append(float(controller.control.value()))
+                if not values:
+                    return 0.0
+                return sum(values) / len(values)
+
+            def last_value(self):
+                return self.interpolate(0.0)
+
+            def add(self, value, interval=0.0):
+                target_value = int(round(float(value)))
+                controllers = (
+                    parent.get_channel_a_pulse_frequency_controller(),
+                    parent.get_channel_b_pulse_frequency_controller(),
+                )
+                for controller in controllers:
+                    if controller is None or controller.control is None:
+                        continue
+                    control = controller.control
+                    control.blockSignals(True)
+                    control.setValue(target_value)
+                    control.blockSignals(False)
+
+        return SharedCoyotePulseFrequencyAxis()
 
     def setupUi(self):
         self.setLayout(QVBoxLayout())
@@ -188,6 +225,9 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
     def get_channel_b_pulse_frequency_controller(self) -> Optional[AxisController]:
         """Get the pulse_frequency axis controller for channel B"""
         return self.get_pulse_frequency_controller('B')
+
+    def get_shared_pulse_frequency_axis(self) -> AbstractAxis:
+        return self._shared_pulse_frequency_axis
 
 @dataclass(frozen=True)
 class ChannelConfig:

@@ -483,6 +483,11 @@ class Window(QMainWindow, Ui_MainWindow):
             self.tcode_command_router.set_carrier_axis(self.tab_pulse_settings.axis_carrier_frequency)
 
         if config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
+            self.tcode_command_router.set_pulse_frequency_axis(self.tab_coyote.get_shared_pulse_frequency_axis())
+        else:
+            self.tcode_command_router.set_pulse_frequency_axis(self.tab_pulse_settings.axis_pulse_frequency)
+
+        if config.device_type in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             self.tcode_command_router.set_carrier_limits(1, 200)
             self.tcode_command_router.set_allowed_axes({
                 AxisEnum.POSITION_ALPHA,

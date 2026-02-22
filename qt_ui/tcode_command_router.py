@@ -130,6 +130,10 @@ class TCodeCommandRouter:
         self.carrier_frequency = carrier
         self.reload_kit()
 
+    def set_pulse_frequency_axis(self, pulse_frequency: AbstractAxis):
+        self.pulse_frequency = pulse_frequency
+        self.reload_kit()
+
     def set_carrier_limits(self, low: float, high: float):
         self._carrier_limits_override = (low, high)
         self.reload_kit()
