@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import logging
 from typing import Optional
 import time
@@ -857,3 +858,16 @@ class CoyoteDevice(OutputDevice, QObject):
     def is_connected_and_running(self) -> bool:
         return (self.connection_stage == ConnectionStage.CONNECTED and 
                 self.client and self.client.is_connected)
+
+    def stop(self):
+        """Stop updates and attempt a clean disconnect before app shutdown."""
+        self.stop_updates()
+
+        if self._event_loop and not self._event_loop.is_closed():
+            try:
+                future = asyncio.run_coroutine_threadsafe(self.disconnect(), self._event_loop)
+                future.result(timeout=2.0)
+            except concurrent.futures.TimeoutError:
+                logger.warning(f"{LOG_PREFIX} Timed out waiting for disconnect during stop()")
+            except Exception as e:
+                logger.debug(f"{LOG_PREFIX} stop() disconnect scheduling failed: {e}")
