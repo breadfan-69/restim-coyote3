@@ -70,6 +70,9 @@ class CoyoteDevice(OutputDevice, QObject):
         self._scan_failure_streak = 0
         self._connect_failure_streak = 0
         self._logged_first_send_payload = False
+        self._first_active_power_seen: bool = False
+        self._last_battery_poll: float = 0.0
+        self._last_parameter_resend: float = 0.0
         
         # Start connection process
         self._start_connection_loop()
@@ -100,6 +103,7 @@ class CoyoteDevice(OutputDevice, QObject):
                     await self._disconnect_client()
                     self._scan_attempt_counter = 0
                     self._next_scan_time = 0.0
+                    self._first_active_power_seen = False
                     self.connection_stage = ConnectionStage.DISCONNECTED
                     continue
                 
@@ -108,6 +112,7 @@ class CoyoteDevice(OutputDevice, QObject):
                     (not self.client or not self.client.is_connected)):
                     logger.warning(f"{LOG_PREFIX} Device disconnected unexpectedly")
                     await self._disconnect_client()
+                    self._first_active_power_seen = False
                     self.connection_stage = ConnectionStage.DISCONNECTED
                     continue
 
@@ -274,11 +279,6 @@ class CoyoteDevice(OutputDevice, QObject):
                     # resent on every reconnection, and periodically to ensure parameters survive
                     # any device state resets
                     current_time = time.time()
-                    if not hasattr(self, '_last_battery_poll'):
-                        self._last_battery_poll = current_time
-                    if not hasattr(self, '_last_parameter_resend'):
-                        self._last_parameter_resend = current_time
-                    
                     if current_time - self._last_battery_poll >= 10:
                         await self._read_battery_level()
                         self._last_battery_poll = current_time
@@ -443,7 +443,7 @@ class CoyoteDevice(OutputDevice, QObject):
                 return
 
             # Track if this is the absolute first CMD_ACTIVE_POWER after connection
-            if not hasattr(self, '_first_active_power_seen') or not self._first_active_power_seen:
+            if not self._first_active_power_seen:
                 power_a = 0
                 power_b = 0
                 self._first_active_power_seen = True

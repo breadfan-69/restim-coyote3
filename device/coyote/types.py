@@ -44,7 +44,7 @@ class CoyotePulses:
     channel_b: list[CoyotePulse]  # Exactly 4 pulses
 
     def duration(self) -> int:
-        return 0
+        return sum(p.duration for p in self.channel_a)
 
 
 @dataclass

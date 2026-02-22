@@ -57,7 +57,7 @@ import logging
 import time
 import numpy as np
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from device.coyote.channel_controller import ChannelController
 from device.coyote.channel_state import ChannelState
@@ -72,6 +72,17 @@ from stim_math.audio_gen.various import ThreePhasePosition
 from stim_math.threephase import ThreePhaseCenterCalibration
 
 logger = logging.getLogger("restim.coyote")
+
+
+def _safe_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value if isinstance(value, (int, float, str, bytes)) else cast(Any, value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_center(value: object) -> float:
+    return float(np.clip(_safe_float(value, -0.7), -10.0, -0.1))
 
 
 @dataclass
@@ -120,7 +131,7 @@ class CoyoteAlgorithm:
             channels.append(ChannelPipeline(name, generator, controller, state))
         self._channels: Tuple[ChannelPipeline, ...] = tuple(channels)
         self.next_update_time: float = 0.0
-        self._last_update_time: float = None
+        self._last_update_time: Optional[float] = None
         self._start_time: Optional[float] = None
 
     def generate_packet(self, current_time: float) -> Optional[CoyotePulses]:
@@ -176,7 +187,7 @@ class CoyoteAlgorithm:
         if delta_s <= 0:
             return
 
-        carrier_hz = float(self.params.carrier_frequency.interpolate(current_time))
+        carrier_hz = _safe_float(self.params.carrier_frequency.interpolate(current_time), 0.0)
         carrier_norm = normalize(carrier_hz, self._carrier_limits)
         texture_speed = self.tuning.texture_min_hz + (self.tuning.texture_max_hz - self.tuning.texture_min_hz) * carrier_norm
 
@@ -191,13 +202,13 @@ class CoyoteAlgorithm:
         alpha, beta = self.position.get_position(time_s)
 
         p = np.clip((alpha + 1) / 2, 0, 1)  # rescale alpha to (0, 1)
-        calibrate_center = np.clip(self.params.calibrate.center.last_value(), -10, -0.1)
+        calibrate_center = _safe_center(self.params.calibrate.center.last_value())
         exponent = np.log(10**(calibrate_center / 10)) / np.log(0.5)
         # choose channel a/b intensity to move the sensation between a/b without affecting the overall signal intensity
         intensity_a = p ** exponent
         intensity_b = (1 - p) ** exponent
 
-        balance = self.params.calibrate.neutral.last_value()  # calibration adjustment between channel A and B
+        balance = _safe_float(self.params.calibrate.neutral.last_value(), 0.0)  # calibration adjustment between channel A and B
         intensity_a *= min(1, 10**(balance/10))
         intensity_b *= min(1, 10**(-balance/10))
 
@@ -298,8 +309,8 @@ class CoyoteAlgorithm:
             mapper = getattr(self.media, "map_timestamp", None)
             if callable(mapper) and self.media.is_playing():
                 try:
-                    rel_time = mapper(time.time())
-                    if rel_time is not None and rel_time >= 0:
+                    rel_time = _safe_float(mapper(time.time()), -1.0)
+                    if rel_time >= 0:
                         return split_seconds(rel_time)
                 except Exception:  # pragma: no cover - defensive
                     pass
@@ -346,19 +357,20 @@ class CoyoteDigletAlgorithm:
             channels.append(ChannelPipeline(name, generator, controller, state))
         self._channels: Tuple[ChannelPipeline, ...] = tuple(channels)
         self.next_update_time: float = 0.0
-        self._last_update_time: float = None
+        self._last_update_time: Optional[float] = None
+        self._start_time: Optional[float] = None
 
     def _positional_intensity(self, time_s: float, volume: float) -> Tuple[int, int]:
         alpha, beta = self.position.get_position(time_s)
 
         p = np.clip((alpha + 1) / 2, 0, 1)  # rescale alpha to (0, 1)
-        calibrate_center = np.clip(self.params.calibrate.center.last_value(), -10, -0.1)
+        calibrate_center = _safe_center(self.params.calibrate.center.last_value())
         exponent = np.log(10**(calibrate_center / 10)) / np.log(0.5)
         # choose channel a/b intensity to move the sensation between a/b without affecting the overall signal intensity
         intensity_a = p ** exponent
         intensity_b = (1 - p) ** exponent
 
-        balance = self.params.calibrate.neutral.last_value()  # calibration adjustment between channel A and B
+        balance = _safe_float(self.params.calibrate.neutral.last_value(), 0.0)  # calibration adjustment between channel A and B
         intensity_a *= min(1, 10**(balance/10))
         intensity_b *= min(1, 10**(-balance/10))
 
@@ -367,6 +379,7 @@ class CoyoteDigletAlgorithm:
         intensity_b *= intensity_scale * volume
 
         return int(intensity_a), int(intensity_b)
+
     def _get_positional_intensities(self, t: float, volume: float) -> Tuple[int, int]:
         """Barycentric phase diagram mapping: (beta, alpha) with left=+1, right=-1, neutral=+1 (top)."""
         alpha, beta = self.position.get_position(t)
@@ -394,10 +407,6 @@ class CoyoteDigletAlgorithm:
         intensity_b = int((w_R + w_N) * volume * scale * 100.0)
 
         return intensity_a, intensity_b
-
-        self._last_update_time: Optional[float] = None
-        self.next_update_time: float = 0.0
-        self._start_time: Optional[float] = None
 
     def generate_packet(self, current_time: float) -> Optional[CoyotePulses]:
         if self._last_update_time is None:
@@ -452,7 +461,7 @@ class CoyoteDigletAlgorithm:
         if delta_s <= 0:
             return
 
-        carrier_hz = float(self.params.carrier_frequency.interpolate(current_time))
+        carrier_hz = _safe_float(self.params.carrier_frequency.interpolate(current_time), 0.0)
         carrier_norm = normalize(carrier_hz, self._carrier_limits)
         texture_speed = self.tuning.texture_min_hz + (self.tuning.texture_max_hz - self.tuning.texture_min_hz) * carrier_norm
 
@@ -462,26 +471,6 @@ class CoyoteDigletAlgorithm:
     def _schedule_from_remaining(self, current_time: float) -> None:
         # Even when no new pulses are needed, maintain 100ms packet interval per DGLabs V3 spec
         self.next_update_time = current_time + 0.1  # 100ms interval
-
-    def _positional_intensity(self, time_s: float, volume: float) -> Tuple[int, int]:
-        alpha, beta = self.position.get_position(time_s)
-
-        p = np.clip((alpha + 1) / 2, 0, 1)  # rescale alpha to (0, 1)
-        calibrate_center = np.clip(self.params.calibrate.center.last_value(), -10, -0.1)  # calibration outside this range is nonsensical
-        exponent = np.log(10**(calibrate_center / 10)) / np.log(0.5)  # roughly match what stereostim/FOC are doing
-        # choose channel a/b intensity to move the sensation between a/b without affecting the overall signal intensity
-        intensity_a = p ** exponent
-        intensity_b = (1 - p) ** exponent
-
-        balance = self.params.calibrate.neutral.last_value()  # calibration adjustment between channel A and B
-        intensity_a *= min(1, 10**(balance/10))
-        intensity_b *= min(1, 10**(-balance/10))
-
-        intensity_scale = 100
-        intensity_a *= intensity_scale * volume
-        intensity_b *= intensity_scale * volume
-
-        return int(intensity_a), int(intensity_b)
 
     def _log_packet(
         self,
@@ -547,8 +536,8 @@ class CoyoteDigletAlgorithm:
             mapper = getattr(self.media, "map_timestamp", None)
             if callable(mapper) and self.media.is_playing():
                 try:
-                    rel_time = mapper(time.time())
-                    if rel_time is not None and rel_time >= 0:
+                    rel_time = _safe_float(mapper(time.time()), -1.0)
+                    if rel_time >= 0:
                         return split_seconds(rel_time)
                 except Exception:  # pragma: no cover - defensive
                     pass
