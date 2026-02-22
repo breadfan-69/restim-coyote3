@@ -1,7 +1,8 @@
 import asyncio
 import concurrent.futures
+import inspect
 import logging
-from typing import Optional
+from typing import Any, Optional, cast
 import time
 import threading
 import sys
@@ -209,12 +210,21 @@ class CoyoteDevice(OutputDevice, QObject):
                         
                 elif self.connection_stage == ConnectionStage.SERVICE_DISCOVERY:
                     try:
-                        if hasattr(self.client, "get_services"):
-                            services = await self.client.get_services()
-                            service_count = len(list(services))
+                        client = self.client
+                        if not client or not client.is_connected:
+                            logger.error(f"{LOG_PREFIX} Lost client before service discovery")
+                            await self._recover_from_transient_failure("service discovery missing client")
+                            continue
+
+                        get_services = getattr(client, "get_services", None)
+                        if callable(get_services):
+                            services_result = get_services()
+                            services = await services_result if inspect.isawaitable(services_result) else services_result
+                            services_any = cast(Any, services)
+                            service_count = len(list(services_any))
                         else:
-                            services = self.client.services
-                            service_count = len(list(services))
+                            services = getattr(client, "services", None)
+                            service_count = len(list(services)) if services else 0
 
                         if service_count > 0:
                             logger.info(f"{LOG_PREFIX} Services discovered ({service_count}), waiting for characteristics to load...")
@@ -355,7 +365,7 @@ class CoyoteDevice(OutputDevice, QObject):
         self._skip_cached_reconnect_scans = 0
         ui_settings.coyote_last_device_address.set(address or "")
 
-    def start_updates(self, algorithm: Optional[any]):
+    def start_updates(self, algorithm: Optional[Any]):
         logger.info(f"{LOG_PREFIX} start_updates called")
         self.algorithm = algorithm
         self.running = True
@@ -455,8 +465,13 @@ class CoyoteDevice(OutputDevice, QObject):
             logger.warning(f"{LOG_PREFIX} Unknown notification type: 0x{command_id:02X} (seq={sequence_number})")
             logger.warning(f"{LOG_PREFIX} Raw notification: {list(data)}")
 
-    async def _send_parameters(self):
+    async def _send_parameters(self) -> bool:
         """Send device parameters"""
+        client = self.client
+        if not client or not client.is_connected:
+            logger.warning(f"{LOG_PREFIX} Cannot sync parameters while disconnected")
+            return False
+
         logger.info(
             f"{LOG_PREFIX} Syncing parameters - "
             f"Limits: A={self.parameters.channel_a_limit}, B={self.parameters.channel_b_limit}, "
@@ -481,7 +496,7 @@ class CoyoteDevice(OutputDevice, QObject):
         
         for attempt in range(max_retries):
             try:
-                await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
+                await client.write_gatt_char(WRITE_CHAR_UUID, command)
                 return True  # Success
             except Exception as e:
                 last_error = e
@@ -496,12 +511,22 @@ class CoyoteDevice(OutputDevice, QObject):
     async def _subscribe_to_notifications(self, char_uuid: str) -> bool:
         """Subscribe to notifications for a characteristic"""
         try:
-            char = self.client.services.get_characteristic(char_uuid)
+            client = self.client
+            if not client or not client.is_connected:
+                logger.error(f"{LOG_PREFIX} Cannot subscribe to {char_uuid} while disconnected")
+                return False
+
+            services = getattr(client, "services", None)
+            if services is None:
+                logger.error(f"{LOG_PREFIX} Services unavailable while subscribing to {char_uuid}")
+                return False
+
+            char = services.get_characteristic(char_uuid)
             if not char:
                 logger.error(f"{LOG_PREFIX} Characteristic {char_uuid} not found")
                 return False
             
-            await self.client.start_notify(char_uuid, self._handle_status_notification)
+            await client.start_notify(char_uuid, self._handle_status_notification)
             return True
         except Exception as e:
             logger.error(f"{LOG_PREFIX} Failed to subscribe to {char_uuid}: {e}")
@@ -681,6 +706,8 @@ class CoyoteDevice(OutputDevice, QObject):
 
             return False
 
+        client = self.client
+
         if not strengths and not pulses:
             logger.warning(f"{LOG_PREFIX} send_command called with no data")
             return False
@@ -756,7 +783,7 @@ class CoyoteDevice(OutputDevice, QObject):
         
         for attempt in range(max_retries):
             try:
-                await self.client.write_gatt_char(WRITE_CHAR_UUID, command)
+                await client.write_gatt_char(WRITE_CHAR_UUID, command)
                 self.sequence_number = (self.sequence_number + 1) % SEQUENCE_MODULO  # Wrap seq at 4 bits (0-15)
                 return True  # Success
             except Exception as e:
@@ -856,8 +883,11 @@ class CoyoteDevice(OutputDevice, QObject):
             logger.info(f"{LOG_PREFIX} Update loop stopped")
     
     def is_connected_and_running(self) -> bool:
-        return (self.connection_stage == ConnectionStage.CONNECTED and 
-                self.client and self.client.is_connected)
+        return bool(
+            self.connection_stage == ConnectionStage.CONNECTED
+            and self.client
+            and self.client.is_connected
+        )
 
     def stop(self):
         """Stop updates and attempt a clean disconnect before app shutdown."""
