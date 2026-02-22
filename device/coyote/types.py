@@ -43,7 +43,7 @@ class CoyotePulses:
     channel_a: list[CoyotePulse]  # Exactly 4 pulses
     channel_b: list[CoyotePulse]  # Exactly 4 pulses
 
-    def duration() -> int:
+    def duration(self) -> int:
         return 0
 
 

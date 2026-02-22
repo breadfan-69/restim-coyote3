@@ -504,8 +504,6 @@ class Window(QMainWindow, Ui_MainWindow):
                     if hasattr(self, 'tab_coyote'):
                         self.tab_coyote.cleanup()
                     self.output_device = None
-                    import time
-                    time.sleep(0.5)
             if self.output_device is None:
                 self.output_device = CoyoteDevice(DEVICE_NAME)
                 self.output_device.parameters = CoyoteParams(
@@ -549,6 +547,10 @@ class Window(QMainWindow, Ui_MainWindow):
 
         # Clean up previous device if switching away
         if self.output_device and device.device_type not in (DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
+            if isinstance(self.output_device, CoyoteDevice):
+                self.output_device.stop_updates()
+                if self.output_device._event_loop:
+                    asyncio.run_coroutine_threadsafe(self.output_device.disconnect(), self.output_device._event_loop)
             self.output_device = None
             # Clean up Coyote widget resources if switching away from Coyote
             if hasattr(self, 'tab_coyote'):

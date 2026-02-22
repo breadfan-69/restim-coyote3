@@ -84,11 +84,17 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
     def cleanup(self):
         """Clean up widget resources when device is being switched"""
         if self.device:
-            self.device.connection_status_changed.disconnect(self.on_connection_status_changed)
-            self.device.battery_level_changed.disconnect(self.on_battery_level_changed)
-            self.device.parameters_changed.disconnect(self.on_parameters_changed)
-            self.device.power_levels_changed.disconnect(self.on_power_levels_changed)
-            self.device.pulse_sent.disconnect(self.on_pulse_sent)
+            for signal, slot in (
+                (self.device.connection_status_changed, self.on_connection_status_changed),
+                (self.device.battery_level_changed, self.on_battery_level_changed),
+                (self.device.parameters_changed, self.on_parameters_changed),
+                (self.device.power_levels_changed, self.on_power_levels_changed),
+                (self.device.pulse_sent, self.on_pulse_sent),
+            ):
+                try:
+                    signal.disconnect(slot)
+                except (TypeError, RuntimeError):
+                    pass
             self.device = None
 
     def update_channel_strength(self, control: 'ChannelControl', value: int):

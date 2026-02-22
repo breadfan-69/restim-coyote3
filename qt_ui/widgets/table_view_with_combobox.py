@@ -101,8 +101,7 @@ class TreeViewWithComboBox(QTreeView):
             if isinstance(delegate, ComboBoxDelegate):
                 selection = self.selectionModel()
                 if selection:
-                    other_index = self.model().index(index.row(), index.column())
-                    selection.setCurrentIndex(other_index, QItemSelectionModel.SelectionFlag.ClearAndSelect)
+                    selection.setCurrentIndex(index, QItemSelectionModel.SelectionFlag.ClearAndSelect)
 
                 timer = QTimer()
                 timer.timeout.connect(functools.partial(self.edit, index))

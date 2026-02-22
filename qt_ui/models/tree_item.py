@@ -29,7 +29,7 @@ class TreeItem:
 
     def row(self):
         if self.parent:
-            self.parent.children.index(self)
+            return self.parent.children.index(self)
         return 0
 
     def parentItem(self):

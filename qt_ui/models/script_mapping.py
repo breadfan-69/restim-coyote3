@@ -241,7 +241,7 @@ class ScriptMappingModel(QAbstractItemModel):
 
             if use != item.first_of_its_kind:
                 item.first_of_its_kind = use
-                index = self.createIndex(item.row(), 0, item.parent)
+                index = self.createIndex(item.row(), 0, item)
                 self.dataChanged.emit(index, index, [Qt.DisplayRole])
 
     def detect_funscripts_from_path(self, search_directories: [str], media_file: str) -> bool:
@@ -261,7 +261,8 @@ class ScriptMappingModel(QAbstractItemModel):
 
     def clear_auto_detected_funscripts(self):
         if self._funscripts_auto.childCount():
-            self.beginRemoveRows(self.createIndex(0, 0, self._funscripts_auto), 0, self._funscripts_auto.childCount())
+            parent_index = self.createIndex(self._funscripts_auto.row(), 0, self._funscripts_auto)
+            self.beginRemoveRows(parent_index, 0, self._funscripts_auto.childCount() - 1)
             self._funscripts_auto.children.clear()
             self.endRemoveRows()
             return True
