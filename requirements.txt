@@ -4,6 +4,8 @@ sounddevice
 soundfile>=0.13.1
 matplotlib!=3.9.*
 PySide6>=6.9.3
+pyqtgraph
+ahrs
 crc
 msdparser
 # protoletariat		# dev only

@@ -1,7 +1,16 @@
 @echo off
 setlocal enabledelayedexpansion
 
-cd /d "c:\Users\andre\Downloads\coyoterestim\restim"
+cd /d "%~dp0"
+
+set "PYTHON_EXE=%CD%\.venv\Scripts\python.exe"
+if not exist "%PYTHON_EXE%" (
+    echo.
+    echo ✗ .venv Python not found at "%PYTHON_EXE%"
+    echo   Create the venv first or adjust build.bat.
+    pause
+    exit /b 1
+)
 
 echo Cleaning old builds...
 rmdir /s /q dist 2>nul
@@ -13,8 +22,12 @@ taskkill /F /IM python.exe 2>nul
 timeout /t 3 /nobreak
 
 echo.
+echo Ensuring pyqtgraph is installed in build environment...
+"%PYTHON_EXE%" -m pip show pyqtgraph >nul 2>nul || "%PYTHON_EXE%" -m pip install pyqtgraph
+
+echo.
 echo Building executable...
-python -m PyInstaller restim.spec --clean --noconfirm
+"%PYTHON_EXE%" -m PyInstaller restim.spec --clean --noconfirm
 
 if exist "dist\restim\restim.exe" (
     echo.

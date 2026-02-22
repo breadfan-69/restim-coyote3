@@ -1,12 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
 
 a = Analysis(
     ['restim.py'],
     pathex=[],
     binaries=[],
-    datas=[('resources', 'resources'), ('C:\\Users\\andre\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\ahrs\\utils\\WMM2025', 'ahrs/utils/WMM2025')],
-    hiddenimports=[],
+    datas=[('resources', 'resources'), *collect_data_files('ahrs')],
+    hiddenimports=[
+        'pyqtgraph',
+        'ahrs',
+        'ahrs.common.orientation',
+        'ahrs.common.quaternion',
+        'ahrs.filters',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
