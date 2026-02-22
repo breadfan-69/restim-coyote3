@@ -505,8 +505,7 @@ class Window(QMainWindow, Ui_MainWindow):
                         self.tab_coyote.cleanup()
                     self.output_device = None
             if self.output_device is None:
-                self.output_device = CoyoteDevice(DEVICE_NAME)
-                self.output_device.parameters = CoyoteParams(
+                params = CoyoteParams(
                     channel_a_limit=qt_ui.settings.coyote_channel_a_limit.get(),
                     channel_b_limit=qt_ui.settings.coyote_channel_b_limit.get(),
                     channel_a_freq_balance=qt_ui.settings.coyote_channel_a_freq_balance.get(),
@@ -514,6 +513,7 @@ class Window(QMainWindow, Ui_MainWindow):
                     channel_a_intensity_balance=qt_ui.settings.coyote_channel_a_intensity_balance.get(),
                     channel_b_intensity_balance=qt_ui.settings.coyote_channel_b_intensity_balance.get()
                 )
+                self.output_device = CoyoteDevice(DEVICE_NAME, params)
                 self.tab_coyote.setup_device(self.output_device)
         else:
             # Hide Coyote mode label for non-Coyote devices

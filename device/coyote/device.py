@@ -34,14 +34,14 @@ from device.coyote.algorithm import CoyoteAlgorithm, CoyoteDigletAlgorithm
 logger = logging.getLogger('restim.coyote')
 
 class CoyoteDevice(OutputDevice, QObject):
-    parameters: CoyoteParams = None
+    parameters: CoyoteParams
     connection_status_changed = Signal(bool, str)  # Connected, Stage
     battery_level_changed = Signal(int)
     parameters_changed = Signal()
     power_levels_changed = Signal(CoyoteStrengths)
     pulse_sent = Signal(CoyotePulses)
 
-    def __init__(self, device_name: str):
+    def __init__(self, device_name: str, parameters: CoyoteParams):
         OutputDevice.__init__(self)
         QObject.__init__(self)
         self.device_name = device_name
@@ -51,7 +51,7 @@ class CoyoteDevice(OutputDevice, QObject):
         self.connection_stage = ConnectionStage.DISCONNECTED
         self.strengths = CoyoteStrengths(channel_a=0, channel_b=0)
         self.battery_level = 100
-        self.parameters = None
+        self.parameters = parameters
         self._event_loop = None
         self.sequence_number = 1
         self._had_successful_connection = False  # Track if we've ever connected before
