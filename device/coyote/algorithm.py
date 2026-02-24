@@ -122,6 +122,7 @@ class CoyoteAlgorithm:
         self.next_update_time: float = 0.0
         self._last_update_time: float = None
         self._start_time: Optional[float] = None
+        self._start_time: Optional[float] = None
 
     def generate_packet(self, current_time: float) -> Optional[CoyotePulses]:
         if self._last_update_time is None:
@@ -347,26 +348,7 @@ class CoyoteDigletAlgorithm:
         self._channels: Tuple[ChannelPipeline, ...] = tuple(channels)
         self.next_update_time: float = 0.0
         self._last_update_time: float = None
-
-    def _positional_intensity(self, time_s: float, volume: float) -> Tuple[int, int]:
-        alpha, beta = self.position.get_position(time_s)
-
-        p = np.clip((alpha + 1) / 2, 0, 1)  # rescale alpha to (0, 1)
-        calibrate_center = np.clip(self.params.calibrate.center.last_value(), -10, -0.1)
-        exponent = np.log(10**(calibrate_center / 10)) / np.log(0.5)
-        # choose channel a/b intensity to move the sensation between a/b without affecting the overall signal intensity
-        intensity_a = p ** exponent
-        intensity_b = (1 - p) ** exponent
-
-        balance = self.params.calibrate.neutral.last_value()  # calibration adjustment between channel A and B
-        intensity_a *= min(1, 10**(balance/10))
-        intensity_b *= min(1, 10**(-balance/10))
-
-        intensity_scale = 100
-        intensity_a *= intensity_scale * volume
-        intensity_b *= intensity_scale * volume
-
-        return int(intensity_a), int(intensity_b)
+        self._start_time: Optional[float] = None
     def _get_positional_intensities(self, t: float, volume: float) -> Tuple[int, int]:
         """Barycentric phase diagram mapping: (beta, alpha) with left=+1, right=-1, neutral=+1 (top)."""
         alpha, beta = self.position.get_position(t)
@@ -394,10 +376,6 @@ class CoyoteDigletAlgorithm:
         intensity_b = int((w_R + w_N) * volume * scale * 100.0)
 
         return intensity_a, intensity_b
-
-        self._last_update_time: Optional[float] = None
-        self.next_update_time: float = 0.0
-        self._start_time: Optional[float] = None
 
     def generate_packet(self, current_time: float) -> Optional[CoyotePulses]:
         if self._last_update_time is None:
