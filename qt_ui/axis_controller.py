@@ -19,6 +19,7 @@ class AxisController(QtCore.QObject):
         self._external_control_active = False
         self._last_external_axis_update_time = 0.0
         self._external_control_timeout_seconds = 1.0
+        self._last_axis_value = None  # track actual axis value to detect real changes
         self.timer.timeout.connect(self.timeout)
         self.control.valueChanged.connect(self.value_changed)
         self.last_user_entered_value = self.get_control_value()
@@ -34,7 +35,10 @@ class AxisController(QtCore.QObject):
             # Internal axis changed without direct user input in this control.
             # Treat as external control (e.g. TCode) and lock editing while it is active.
             if self.internal_axis is not None and not self._updating_control:
-                self._last_external_axis_update_time = now
+                # Only update timeout when the axis value actually changes,
+                # not on every tick where spinbox rounding causes a persistent mismatch
+                if value != self._last_axis_value:
+                    self._last_external_axis_update_time = now
                 if not self._external_control_active and self.control.isEnabled():
                     self._external_control_active = True
                     self.control.setEnabled(False)
@@ -45,11 +49,17 @@ class AxisController(QtCore.QObject):
             finally:
                 self._updating_control = False
 
+        self._last_axis_value = value
+
         if self._external_control_active and (now - self._last_external_axis_update_time) > self._external_control_timeout_seconds:
             # External stream became idle; return control to the user.
             self._external_control_active = False
             if self.script_axis is None:
                 self.control.setEnabled(True)
+                # Sync axis to the (possibly rounded) control value to prevent
+                # the rounding mismatch from immediately re-triggering external control
+                if self.internal_axis is not None:
+                    self.internal_axis.add(self.get_control_value())
 
     def value_changed(self):
         # TODO: what happens on tcode control?
@@ -82,6 +92,7 @@ class AxisController(QtCore.QObject):
         self.internal_axis = None
         self._external_control_active = False
         self._last_external_axis_update_time = 0.0
+        self._last_axis_value = None
         self.timer.start()
 
     def link_to_internal_axis(self, internal_axis):
@@ -92,6 +103,7 @@ class AxisController(QtCore.QObject):
         self.internal_axis = internal_axis
         self._external_control_active = False
         self._last_external_axis_update_time = 0.0
+        self._last_axis_value = None
         if self.internal_axis is not None:
             self.set_control_value(self.internal_axis.interpolate(time.time()))
         self.control.setEnabled(True)

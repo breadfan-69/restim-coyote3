@@ -187,9 +187,11 @@ class Window(QMainWindow, Ui_MainWindow):
 
         self.websocket_server = net.websocketserver.WebSocketServer(self)
         self.websocket_server.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.websocket_server.all_clients_disconnected.connect(self.on_tcode_clients_disconnected)
 
         self.tcpudp_server = net.tcpudpserver.TcpUdpServer(self)
         self.tcpudp_server.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.tcpudp_server.all_clients_disconnected.connect(self.on_tcode_clients_disconnected)
 
         self.serial_proxy = net.serialproxy.SerialProxy(self)
         self.serial_proxy.new_tcode_command.connect(self.tcode_command_router.route_command)
@@ -329,6 +331,16 @@ class Window(QMainWindow, Ui_MainWindow):
             self.iconMedia.set_connected()
         else:
             self.iconMedia.set_not_connected()
+
+    def on_tcode_clients_disconnected(self):
+        """
+        Called when all TCode clients disconnect from a server (websocket/TCP).
+        Reset TCode-controlled axes back to safe defaults so they don't stay
+        stuck at whatever value the last client set.
+        """
+        logger.info('All TCode clients disconnected, resetting TCode-controlled axes.')
+        self.tab_volume.axis_api_volume.add(1.0)
+        self.tab_volume.axis_external_volume.add(1.0)
 
     def funscript_mapping_changed(self):
         """
