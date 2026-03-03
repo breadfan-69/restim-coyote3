@@ -53,12 +53,9 @@ class CoyoteSettingsWidget(QtWidgets.QWidget):
                     parent.get_channel_b_pulse_frequency_controller(),
                 )
                 for controller in controllers:
-                    if controller is None or controller.control is None:
+                    if controller is None:
                         continue
-                    control = controller.control
-                    control.blockSignals(True)
-                    control.setValue(target_value)
-                    control.blockSignals(False)
+                    controller.set_external_value(target_value)
 
         return SharedCoyotePulseFrequencyAxis()
 
@@ -273,6 +270,7 @@ class ChannelControl:
         self.pulse_min: Optional[QSpinBox] = None
         self.pulse_max: Optional[QSpinBox] = None
         self.pulse_duration: Optional[QSpinBox] = None
+        self.pulse_frequency_axis = None
         self.pulse_frequency_controller: Optional[AxisController] = None
         self.strength_max: Optional[QSpinBox] = None
         self.volume_slider: Optional[QSlider] = None
@@ -360,10 +358,8 @@ class ChannelControl:
 
         # Create axis controller for this channel's pulse_duration
         self.pulse_frequency_controller = AxisController(self.pulse_duration)
-        # Link to an axis that reads the current spinbox value dynamically
-        self.pulse_frequency_controller.link_to_internal_axis(
-            self.create_pulse_duration_axis()
-        )
+        self.pulse_frequency_axis = create_constant_axis(initial_value)
+        self.pulse_frequency_controller.link_to_internal_axis(self.pulse_frequency_axis)
 
         group_layout.addLayout(left)
 
@@ -422,23 +418,6 @@ class ChannelControl:
         if not channel_pulses:
             return
         self.handle_pulses(channel_pulses, self.select_strength(strengths))
-
-    def create_pulse_duration_axis(self):
-        """Create a dynamic axis that reads the current pulse_duration spinbox value."""
-        class DynamicSpinboxAxis:
-            """An axis that dynamically reads from a spinbox."""
-            def __init__(self, spinbox):
-                self.spinbox = spinbox
-            
-            def interpolate(self, time_s):
-                """Always return the current spinbox value."""
-                return float(self.spinbox.value())
-            
-            def add(self, value, interval=0.0):
-                """No-op for dynamic axis."""
-                pass
-        
-        return DynamicSpinboxAxis(self.pulse_duration)
 
     def on_volume_changed(self, value: int):
         self.update_volume_label(value)

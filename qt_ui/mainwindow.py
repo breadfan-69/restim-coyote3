@@ -155,6 +155,8 @@ class Window(QMainWindow, Ui_MainWindow):
             # TODO: neostim
         )
 
+        self._tcode_axis_controllers = self._build_tcode_axis_controller_map()
+
         # threephase view
         self.motion_3 = qt_ui.patterns.threephase_patterns.ThreephaseMotionGenerator(self, self.alpha, self.beta)
         self.graphicsView_threephase.set_transform_params(self.tab_threephase.transform_params)
@@ -186,18 +188,18 @@ class Window(QMainWindow, Ui_MainWindow):
         self.output_device = None
 
         self.websocket_server = net.websocketserver.WebSocketServer(self)
-        self.websocket_server.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.websocket_server.new_tcode_command.connect(self.on_tcode_command)
         self.websocket_server.all_clients_disconnected.connect(self.on_tcode_clients_disconnected)
 
         self.tcpudp_server = net.tcpudpserver.TcpUdpServer(self)
-        self.tcpudp_server.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.tcpudp_server.new_tcode_command.connect(self.on_tcode_command)
         self.tcpudp_server.all_clients_disconnected.connect(self.on_tcode_clients_disconnected)
 
         self.serial_proxy = net.serialproxy.SerialProxy(self)
-        self.serial_proxy.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.serial_proxy.new_tcode_command.connect(self.on_tcode_command)
 
         self.buttplug_wsdm_client = net.buttplug_wsdm_client.ButtplugWsdmClient(self)
-        self.buttplug_wsdm_client.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.buttplug_wsdm_client.new_tcode_command.connect(self.on_tcode_command)
 
         self.tab_volume.set_monitor_axis([
             self.alpha,
@@ -332,6 +334,40 @@ class Window(QMainWindow, Ui_MainWindow):
         else:
             self.iconMedia.set_not_connected()
 
+    def _build_tcode_axis_controller_map(self):
+        mapping = {
+            self.tab_carrier.axis_carrier: [self.tab_carrier.carrier_controller],
+            self.tab_pulse_settings.axis_carrier_frequency: [self.tab_pulse_settings.carrier_controller],
+            self.tab_pulse_settings.axis_pulse_frequency: [self.tab_pulse_settings.pulse_frequency_controller],
+            self.tab_pulse_settings.axis_pulse_width: [self.tab_pulse_settings.pulse_width_controller],
+            self.tab_pulse_settings.axis_pulse_interval_random: [self.tab_pulse_settings.pulse_interval_random_controller],
+            self.tab_pulse_settings.axis_pulse_rise_time: [self.tab_pulse_settings.pulse_rise_time_controller],
+            self.tab_coyote.get_shared_pulse_frequency_axis(): [
+                self.tab_coyote.get_channel_a_pulse_frequency_controller(),
+                self.tab_coyote.get_channel_b_pulse_frequency_controller(),
+            ],
+        }
+        cleaned = {}
+        for axis, controllers in mapping.items():
+            cleaned[axis] = [controller for controller in controllers if controller is not None]
+        return cleaned
+
+    def on_tcode_command(self, cmd):
+        axis = self.tcode_command_router.route_command(cmd)
+        if axis is None:
+            return
+        for controller in self._tcode_axis_controllers.get(axis, []):
+            controller.mark_external_activity()
+
+    def _release_tcode_axis_locks(self):
+        released = set()
+        for controllers in self._tcode_axis_controllers.values():
+            for controller in controllers:
+                if controller in released:
+                    continue
+                controller.release_external_control()
+                released.add(controller)
+
     def on_tcode_clients_disconnected(self):
         """
         Called when all TCode clients disconnect from a server (websocket/TCP).
@@ -341,6 +377,7 @@ class Window(QMainWindow, Ui_MainWindow):
         logger.info('All TCode clients disconnected, resetting TCode-controlled axes.')
         self.tab_volume.axis_api_volume.add(1.0)
         self.tab_volume.axis_external_volume.add(1.0)
+        self._release_tcode_axis_locks()
 
     def funscript_mapping_changed(self):
         """

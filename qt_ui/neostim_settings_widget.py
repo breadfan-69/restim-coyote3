@@ -25,7 +25,7 @@ class NeoStimSettingsWidget(QtWidgets.QWidget, Ui_NeoStimSettingsWidget):
         self.axis_carrier_frequency = create_temporal_axis(self.carrier_frequency.value())
         self.axis_inversion_time = create_temporal_axis(self.inversion_time.value())
         self.axis_switch_time = create_temporal_axis(self.switch_time.value())
-        self.axis_pulse_frequency = create_temporal_axis(self.pulse_frequency.value())
+        self.axis_pulse_frequency = create_constant_axis(self.pulse_frequency.value())
         self.axis_duty_cycle_at_max_power = create_temporal_axis(self.duty_cycle_at_max_power.value() / 100)
         self.axis_debug = create_constant_axis(self.get_debug_params())
 

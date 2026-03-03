@@ -61,6 +61,32 @@ class AxisController(QtCore.QObject):
                 if self.internal_axis is not None:
                     self.internal_axis.add(self.get_control_value())
 
+    def mark_external_activity(self):
+        if self.internal_axis is None:
+            return
+        now = time.time()
+        self._last_external_axis_update_time = now
+        if not self._external_control_active:
+            self._external_control_active = True
+            if self.control.isEnabled():
+                self.control.setEnabled(False)
+
+    def set_external_value(self, value):
+        self.mark_external_activity()
+        if self.internal_axis is not None:
+            self.internal_axis.add(value)
+        self._updating_control = True
+        try:
+            self.set_control_value(value)
+        finally:
+            self._updating_control = False
+
+    def release_external_control(self):
+        self._external_control_active = False
+        self._last_external_axis_update_time = 0.0
+        if self.script_axis is None:
+            self.control.setEnabled(True)
+
     def value_changed(self):
         # TODO: what happens on tcode control?
         if self._updating_control:

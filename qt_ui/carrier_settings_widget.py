@@ -2,7 +2,7 @@ from __future__ import unicode_literals
 from PySide6 import QtCore, QtWidgets
 
 import stim_math.limits
-from stim_math.axis import AbstractAxis, create_temporal_axis
+from stim_math.axis import AbstractAxis, create_constant_axis
 from qt_ui import settings
 from qt_ui.axis_controller import AxisController
 
@@ -13,7 +13,7 @@ class CarrierSettingsWidget(QtWidgets.QWidget):
         l = QtWidgets.QFormLayout(self)
         l.setObjectName("FormLayout")
 
-        self.axis_carrier = create_temporal_axis(settings.mk312_carrier.get())
+        self.axis_carrier = create_constant_axis(settings.mk312_carrier.get())
 
         gbc = QtWidgets.QGroupBox("Carrier", self)
         gbc_l = QtWidgets.QFormLayout(gbc)
