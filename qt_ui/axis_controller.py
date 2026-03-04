@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 import time
+from typing import Optional
 
 from PySide6 import QtCore, QtWidgets
 
@@ -11,20 +12,87 @@ class AxisController(QtCore.QObject):
         super(AxisController, self).__init__()
         self.control = control
         self.timer = QtCore.QTimer()
-        self.timer.setInterval(100)
-        self.script_axis: AbstractAxis = None
-        self.internal_axis: AbstractAxis = None
+        self.timer.setInterval(16)  # ~60Hz update rate for responsive UI
+        self.script_axis: Optional[AbstractAxis] = None
+        self.internal_axis: Optional[AbstractAxis] = None
+        self._updating_control = False
+        self._external_control_active = False
+        self._last_external_axis_update_time = 0.0
+        self._external_control_timeout_seconds = 1.0
+        self._last_axis_value = None  # track actual axis value to detect real changes
         self.timer.timeout.connect(self.timeout)
         self.control.valueChanged.connect(self.value_changed)
         self.last_user_entered_value = self.get_control_value()
 
     def timeout(self):
-        if self.script_axis:
-            self.set_control_value(self.script_axis.interpolate(time.time()))
+        axis = self.axis
+        if axis is None:
+            return
+
+        now = time.time()
+        value = axis.interpolate(now)
+        if value != self.get_control_value():
+            # Internal axis changed without direct user input in this control.
+            # Treat as external control (e.g. TCode) and lock editing while it is active.
+            if self.internal_axis is not None and not self._updating_control:
+                # Only update timeout when the axis value actually changes,
+                # not on every tick where spinbox rounding causes a persistent mismatch
+                if value != self._last_axis_value:
+                    self._last_external_axis_update_time = now
+                if not self._external_control_active and self.control.isEnabled():
+                    self._external_control_active = True
+                    self.control.setEnabled(False)
+
+            self._updating_control = True
+            try:
+                self.set_control_value(value)
+            finally:
+                self._updating_control = False
+
+        self._last_axis_value = value
+
+        if self._external_control_active and (now - self._last_external_axis_update_time) > self._external_control_timeout_seconds:
+            # External stream became idle; return control to the user.
+            self._external_control_active = False
+            if self.script_axis is None:
+                self.control.setEnabled(True)
+                # Sync axis to the (possibly rounded) control value to prevent
+                # the rounding mismatch from immediately re-triggering external control
+                if self.internal_axis is not None:
+                    self.internal_axis.add(self.get_control_value())
+
+    def mark_external_activity(self):
+        if self.internal_axis is None:
+            return
+        now = time.time()
+        self._last_external_axis_update_time = now
+        if not self._external_control_active:
+            self._external_control_active = True
+            if self.control.isEnabled():
+                self.control.setEnabled(False)
+
+    def set_external_value(self, value):
+        self.mark_external_activity()
+        if self.internal_axis is not None:
+            self.internal_axis.add(value)
+        self._updating_control = True
+        try:
+            self.set_control_value(value)
+        finally:
+            self._updating_control = False
+
+    def release_external_control(self):
+        self._external_control_active = False
+        self._last_external_axis_update_time = 0.0
+        if self.script_axis is None:
+            self.control.setEnabled(True)
 
     def value_changed(self):
         # TODO: what happens on tcode control?
-        if not self.script_axis:    # if: not funscript control
+        if self._updating_control:
+            return
+
+        if self.internal_axis is not None:    # if: not funscript control
             self.internal_axis.add(self.get_control_value())
             self.last_user_entered_value = self.get_control_value()
             self.modified_by_user.emit()
@@ -47,17 +115,32 @@ class AxisController(QtCore.QObject):
         """
         self.control.setEnabled(False)
         self.script_axis = script_axis
+        self.internal_axis = None
+        self._external_control_active = False
+        self._last_external_axis_update_time = 0.0
+        self._last_axis_value = None
         self.timer.start()
 
     def link_to_internal_axis(self, internal_axis):
         """
         Behavior: control enabled. Whenever user modifies the control, value is inserted in axis.
         """
-        self.timer.stop()
         self.script_axis = None
         self.internal_axis = internal_axis
-        self.set_control_value(self.internal_axis.interpolate(time.time()))
+        self._external_control_active = False
+        self._last_external_axis_update_time = 0.0
+        self._last_axis_value = None
+        if self.internal_axis is not None:
+            self.set_control_value(self.internal_axis.interpolate(time.time()))
         self.control.setEnabled(True)
+        self.timer.start()
+
+    @property
+    def axis(self) -> Optional[AbstractAxis]:
+        """Get the active axis (script_axis if available, otherwise internal_axis)"""
+        if self.script_axis:
+            return self.script_axis
+        return self.internal_axis
 
     modified_by_user = QtCore.Signal()
 
@@ -77,8 +160,8 @@ class GroupboxAxisController(QtCore.QObject):
     def __init__(self, control: QtWidgets.QGroupBox):
         super(GroupboxAxisController, self).__init__()
         self.control = control
-        self.script_axis: AbstractAxis = None
-        self.internal_axis: AbstractAxis = None
+        self.script_axis: Optional[AbstractAxis] = None
+        self.internal_axis: Optional[AbstractAxis] = None
         self.control.toggled.connect(self.value_changed)
         self.last_user_entered_value = self.control.isChecked()
 

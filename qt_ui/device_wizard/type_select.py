@@ -8,19 +8,18 @@ class WizardPageDeviceType(QWizardPage, Ui_WizardPageDeviceType):
         super().__init__(parent)
         self.setupUi(self)
 
-        self.audio_based_radio.setChecked(True)
+        # Pre-select Coyote as default device
+        self.coyote_radio.setChecked(True)
 
-        self._device_type_radios = [
-            self.audio_based_radio,
-            self.focstim_radio,
-            self.neostim_radio,
-        ]
-
-        if hasattr(self, 'coyote_radio'):
-            self._device_type_radios.append(self.coyote_radio)
-
-        for radio in self._device_type_radios:
-            radio.toggled.connect(self.completeChanged)
+        self.audio_based_radio.toggled.connect(self.completeChanged)
+        self.focstim_radio.toggled.connect(self.completeChanged)
+        self.neostim_radio.toggled.connect(self.completeChanged)
+        self.coyote_radio.toggled.connect(self.completeChanged)
 
     def isComplete(self) -> bool:
-        return any(radio.isChecked() for radio in self._device_type_radios)
+        return any([
+                self.audio_based_radio.isChecked(),
+                self.focstim_radio.isChecked(),
+                self.neostim_radio.isChecked(),
+                self.coyote_radio.isChecked()
+        ])

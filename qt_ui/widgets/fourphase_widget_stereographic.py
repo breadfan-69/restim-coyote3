@@ -5,6 +5,8 @@ from PySide6.QtWidgets import QApplication, QGraphicsScene, QGraphicsView, QGrap
 from PySide6.QtCore import QPointF, QRectF, QTimer
 from PySide6.QtGui import QColor, QTransform, QPen, Qt, QPainter, QFont, QMouseEvent
 
+from qt_ui import settings
+
 import numpy as np
 
 COEF_1 = 1
@@ -17,21 +19,21 @@ v2 = np.array([-COEF_1 / 3, COEF_2, 0])
 v3 = np.array([-COEF_1 / 3, -COEF_2 / 2, COEF_3])
 v4 = np.array([-COEF_1 / 3, -COEF_2 / 2, -COEF_3])
 
-COLOR_LINE = QColor.fromRgb(50, 50, 50)
+COLOR_LINE = QColor.fromRgb(100, 150, 255)  # Light blue - visible on both dark and light
 LINE_WIDTH = .08
 COLOR_DOT = QColor.fromRgb(180, 140, 220)
 DOT_WIDTH = .15
 
-## SSBU colors.
-COLOR_A = QColor.fromRgb(0xFE, 0x2E, 0x2E)   # red
-COLOR_B = QColor.fromRgb(0x54, 0x63, 0xFF)   # blue
-COLOR_C = QColor.fromRgb(0xFF, 0xC7, 0x17)   # yellow
-COLOR_D = QColor.fromRgb(0x1F, 0x9E, 0x40)   # green
+## SSBU colors - darkened for dark background
+COLOR_A = QColor.fromRgb(0x88, 0x1E, 0x1E)   # dark red
+COLOR_B = QColor.fromRgb(0x2E, 0x38, 0x99)   # dark blue
+COLOR_C = QColor.fromRgb(0x99, 0x78, 0x0D)   # dark yellow
+COLOR_D = QColor.fromRgb(0x0F, 0x5E, 0x28)   # dark green
 
-COLOR_A_ACCENT = COLOR_A.darker(115)
-COLOR_B_ACCENT = COLOR_B.darker(115)
-COLOR_C_ACCENT = COLOR_C.darker(115)
-COLOR_D_ACCENT = COLOR_D.darker(115)
+COLOR_A_ACCENT = QColor.fromRgb(200, 100, 100)   # light red
+COLOR_B_ACCENT = QColor.fromRgb(100, 150, 255)   # light blue
+COLOR_C_ACCENT = QColor.fromRgb(255, 200, 100)   # light yellow
+COLOR_D_ACCENT = QColor.fromRgb(100, 200, 100)   # light green
 
 PROJECTION_ORIGIN = v1 + v3
 PROJECTION_ORIGIN = PROJECTION_ORIGIN / np.linalg.norm(PROJECTION_ORIGIN)
@@ -239,13 +241,13 @@ class FourphaseWidgetStereographic(QGraphicsView):
     def set_cursor_position_xy(self, xy):
         xyz = projection.xy_to_xyz(xy)
         size = projection.scale(xy) * 2
-        self.cursor_1.setVisible(size < 10)
+        self.cursor_1.setVisible(bool(size < 10))
         self.cursor_1.setScale(size)
         self.cursor_1.setX(xy[0] - DOT_WIDTH/2 * size)
         self.cursor_1.setY(xy[1] - DOT_WIDTH/2 * size)
         xy = projection.xyz_to_xy(-np.array(xyz))
         size = projection.scale(xy) * 2
-        self.cursor_2.setVisible(size < 10)
+        self.cursor_2.setVisible(bool(size < 10))
         self.cursor_2.setScale(size)
         self.cursor_2.setX(xy[0] - DOT_WIDTH/2 * size)
         self.cursor_2.setY(xy[1] - DOT_WIDTH/2 * size)

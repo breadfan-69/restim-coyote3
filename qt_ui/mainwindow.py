@@ -774,6 +774,9 @@ class Window(QMainWindow, Ui_MainWindow):
         Reload everything that is stored in settings and may be changed
         by the preferences dialog
         """
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app)
         self.tcode_command_router.reload_kit()
         self.tab_volume.refreshSettings()
         self.buttplug_wsdm_client.refreshSettings()
