@@ -1,5 +1,8 @@
 from __future__ import annotations  # multiple return values
 import numpy as np
+import collections.abc
+
+from typing import Optional, Callable
 
 from device.focstim.fourphase_algorithm import FOCStimFourphaseAlgorithm
 from device.neostim.algorithm import NeoStimAlgorithm
@@ -13,7 +16,7 @@ from stim_math.audio_gen.params import *
 from qt_ui.models.funscript_kit import FunscriptKitModel
 from qt_ui.models.script_mapping import ScriptMappingModel
 from qt_ui.device_wizard.axes import AxisEnum
-from stim_math.axis import create_precomputed_axis, AbstractTimestampMapper, create_constant_axis, AbstractMediaSync
+from stim_math.axis import create_precomputed_axis, AbstractTimestampMapper, create_constant_axis, AbstractMediaSync, AbstractAxis
 
 
 class AlgorithmFactory:
@@ -50,8 +53,12 @@ class AlgorithmFactory:
             return self.create_focstim_4phase_pulsebased(device)
         elif device.device_type == DeviceType.NEOSTIM_THREE_PHASE:
             return self.create_neostim(device)
-        else:
-            raise RuntimeError('unknown device type')
+
+        plugin_factory = _plugin_factories.get(device.device_type)
+        if plugin_factory:
+            return plugin_factory(self, device)
+
+        raise RuntimeError(f'unknown device type: {device.device_type}')
 
     def create_3phase_continuous(self, device: DeviceConfiguration) -> AudioGenerationAlgorithm:
         algorithm = ThreePhaseAlgorithm(
@@ -242,7 +249,7 @@ class AlgorithmFactory:
             ),
         )
         return algorithm
-
+    
     def get_axis_alpha(self):
         return self.get_axis_from_script_mapping(AxisEnum.POSITION_ALPHA) or self.mainwindow.alpha
 
@@ -308,6 +315,24 @@ class AlgorithmFactory:
     def get_axis_pulse_rise_time(self):
         return self.get_axis_from_script_mapping(AxisEnum.PULSE_RISE_TIME) or \
             self.mainwindow.tab_pulse_settings.axis_pulse_rise_time
+
+    def get_axis_coyote_channel_a_pulse_frequency(self):
+        # For Coyote, use funscript if available, otherwise use channel A spinbox
+        # Note: Frequency mapping from [0, 100] to [freq_min, freq_max] is handled in pulse_generator.create_pulse()
+        funscript_freq = self.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY)
+        if funscript_freq:
+            return funscript_freq
+        # Use channel A spinbox controller's axis (always available, no interpolation)
+        return self.mainwindow.tab_coyote.get_channel_a_pulse_frequency_controller().axis
+
+    def get_axis_coyote_channel_b_pulse_frequency(self):
+        # For Coyote, use funscript if available, otherwise use channel B spinbox
+        # Note: Frequency mapping from [0, 100] to [freq_min, freq_max] is handled in pulse_generator.create_pulse()
+        funscript_freq = self.get_axis_from_script_mapping(AxisEnum.PULSE_FREQUENCY)
+        if funscript_freq:
+            return funscript_freq
+        # Use channel B spinbox controller's axis (always available, no interpolation)
+        return self.mainwindow.tab_coyote.get_channel_b_pulse_frequency_controller().axis
 
     def get_axis_vib1_all(self):
         return VibrationParams(
@@ -414,13 +439,13 @@ class AlgorithmFactory:
     def get_axis_neostim_debug(self):
         return self.mainwindow.tab_neostim.axis_debug
 
-    def get_axis_from_script_mapping(self, axis: AxisEnum) -> AbstractAxis | None:
+    def get_axis_from_script_mapping(self, axis: AxisEnum, limits: Optional[tuple[int, int]] = None) -> AbstractAxis | None:
         if not self.load_funscripts:
             return None
 
         funscript_item = self.script_mapping.get_config_for_axis(axis)
         if funscript_item:
-            limit_min, limit_max = self.kit.limits_for_axis(axis)
+            limit_min, limit_max = limits or self.kit.limits_for_axis(axis)
             # TODO: not very memory efficient if multiple algorithms reference the same script.
             # but worst-case it only wastes a few MB or so...
             return create_precomputed_axis(funscript_item.script.x,
@@ -428,3 +453,18 @@ class AlgorithmFactory:
                                            self.timestamp_mapper)
         else:
             return None
+
+
+AlgorithmFactoryPlugin = Callable[[AlgorithmFactory, DeviceConfiguration], AudioGenerationAlgorithm | NeoStimAlgorithm]
+_plugin_factories: dict[DeviceType, AlgorithmFactoryPlugin] = {}
+
+
+def register_algorithm_factory(device_type: DeviceType, factory_fn: AlgorithmFactoryPlugin):
+    _plugin_factories[device_type] = factory_fn
+
+
+try:
+    from coyote_plugin.algorithm_factory import register_coyote_algorithm_factories
+    register_coyote_algorithm_factories(register_algorithm_factory)
+except Exception:
+    pass

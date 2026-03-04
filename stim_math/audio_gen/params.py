@@ -171,6 +171,13 @@ class NeoStimParams:
     debug: AbstractAxis         # NeoStimDebugSettings
 
 
+
+
+
+
+
+
+
 @dataclass
 class SafetyParams:
     minimum_carrier_frequency: float

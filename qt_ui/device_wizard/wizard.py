@@ -10,9 +10,19 @@ from qt_ui.device_wizard.waveform_select import WizardPageWaveformType
 from qt_ui.device_wizard.safety_limits import WizardPageSafetyLimits
 from qt_ui.device_wizard.neostim_waveform_select import WizardPageNeoStimWaveformSelect
 from qt_ui.device_wizard.enums import DeviceType, WaveformType, DeviceConfiguration
+from qt_ui.settings import device_config_waveform_amplitude_amps
 
 
 logger = logging.getLogger('restim.device_wizard')
+
+_wizard_plugins = []
+
+
+def register_wizard_plugin(plugin):
+    for existing in _wizard_plugins:
+        if type(existing) is type(plugin):
+            return
+    _wizard_plugins.append(plugin)
 
 
 class WizardPage(Enum):
@@ -27,6 +37,14 @@ class WizardPage(Enum):
 class DeviceSelectionWizard(QWizard):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._runtime_plugins = list(_wizard_plugins)
+
+        try:
+            from coyote_plugin.wizard_integration import register_coyote_wizard_plugin
+            register_coyote_wizard_plugin(register_wizard_plugin)
+            self._runtime_plugins = list(_wizard_plugins)
+        except Exception:
+            pass
 
         self.setWindowTitle('Device configuration wizard')
 
@@ -48,6 +66,11 @@ class DeviceSelectionWizard(QWizard):
         self.setPage(WizardPage.Page_neostim_waveform.value, self.page_neostim_waveform_select)
         self.page_focstim_waveform_select = WizardPageFocStimWaveformSelect()
         self.setPage(WizardPage.Page_focstim_waveform.value, self.page_focstim_waveform_select)
+
+        for plugin in self._runtime_plugins:
+            register_pages = getattr(plugin, 'register_pages', None)
+            if callable(register_pages):
+                register_pages(self)
 
         self.set_configuration(DeviceConfiguration.from_settings())
 
@@ -76,13 +99,41 @@ class DeviceSelectionWizard(QWizard):
                 return WizardPage.Page_focstim_waveform.value
             elif self.page_device_type.neostim_radio.isChecked():
                 return WizardPage.Page_neostim_waveform.value
+            for plugin in self._runtime_plugins:
+                next_id = getattr(plugin, 'next_id', None)
+                if callable(next_id):
+                    custom_page = next_id(self, self.currentId())
+                    if custom_page is not None:
+                        return custom_page
             else:
                 raise RuntimeError("unknown device type")
 
         if self.currentId() == WizardPage.Page_waveform.value:
+            if self.page_waveform_type.continuous_radio.isChecked():
+                self.page_safety_limits.min_frequency_spinbox.setRange(500, 1500)
+                self.page_safety_limits.max_frequency_spinbox.setRange(500, 1500)
+                self.page_safety_limits.min_frequency_spinbox.setValue(500)
+                self.page_safety_limits.max_frequency_spinbox.setValue(1500)
+            else:
+                self.page_safety_limits.min_frequency_spinbox.setRange(500, 2000)
+                self.page_safety_limits.max_frequency_spinbox.setRange(500, 2000)
+                self.page_safety_limits.min_frequency_spinbox.setValue(500)
+                self.page_safety_limits.max_frequency_spinbox.setValue(2000)
             return WizardPage.Page_limits.value
         elif self.currentId() == WizardPage.Page_focstim_waveform.value:
+            self.page_safety_limits_foc.min_frequency_spinbox.setRange(500, 2000)
+            self.page_safety_limits_foc.max_frequency_spinbox.setRange(500, 2000)
+            self.page_safety_limits_foc.min_frequency_spinbox.setValue(500)
+            self.page_safety_limits_foc.max_frequency_spinbox.setValue(2000)
             return WizardPage.Page_limits_foc.value
+
+        for plugin in self._runtime_plugins:
+            next_id = getattr(plugin, 'next_id', None)
+            if callable(next_id):
+                custom_page = next_id(self, self.currentId())
+                if custom_page is not None:
+                    return custom_page
+
         return -1
 
     def validateCurrentPage(self) -> bool:
@@ -96,6 +147,11 @@ class DeviceSelectionWizard(QWizard):
                 pass
             elif self.page_device_type.neostim_radio.isChecked():
                 pass
+
+        for plugin in self._runtime_plugins:
+            validate_page = getattr(plugin, 'validate_current_page', None)
+            if callable(validate_page):
+                validate_page(self, self.currentId())
 
         return super(DeviceSelectionWizard, self).validateCurrentPage()
 
@@ -147,6 +203,12 @@ class DeviceSelectionWizard(QWizard):
                 None
             )
         else:
+            for plugin in self._runtime_plugins:
+                get_configuration = getattr(plugin, 'get_configuration', None)
+                if callable(get_configuration):
+                    custom_config = get_configuration(self)
+                    if custom_config is not None:
+                        return custom_config
             assert(False)
 
     def set_configuration(self, config: DeviceConfiguration):
@@ -161,9 +223,25 @@ class DeviceSelectionWizard(QWizard):
         if config.device_type == DeviceType.NEOSTIM_THREE_PHASE:
             self.page_device_type.neostim_radio.setChecked(True)
 
+        for plugin in self._runtime_plugins:
+            set_configuration = getattr(plugin, 'set_configuration', None)
+            if callable(set_configuration):
+                set_configuration(self, config)
+
         self.page_waveform_type.continuous_radio.setChecked(config.waveform_type == WaveformType.CONTINUOUS)
         self.page_waveform_type.pulse_based_radio.setChecked(config.waveform_type == WaveformType.PULSE_BASED)
         self.page_waveform_type.a_b_radio.setChecked(config.waveform_type == WaveformType.A_B_TESTING)
+
+        if config.device_type == DeviceType.AUDIO_THREE_PHASE and config.waveform_type == WaveformType.CONTINUOUS:
+            self.page_safety_limits.min_frequency_spinbox.setRange(500, 1500)
+            self.page_safety_limits.max_frequency_spinbox.setRange(500, 1500)
+        else:
+            self.page_safety_limits.min_frequency_spinbox.setRange(500, 2000)
+            self.page_safety_limits.max_frequency_spinbox.setRange(500, 2000)
+
+        if config.device_type in (DeviceType.FOCSTIM_THREE_PHASE, DeviceType.FOCSTIM_FOUR_PHASE):
+            self.page_safety_limits_foc.min_frequency_spinbox.setRange(500, 2000)
+            self.page_safety_limits_foc.max_frequency_spinbox.setRange(500, 2000)
 
         self.page_safety_limits.min_frequency_spinbox.setValue(config.min_frequency)
         self.page_safety_limits.max_frequency_spinbox.setValue(config.max_frequency)

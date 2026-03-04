@@ -18,7 +18,12 @@ class Setting:
 
     def get(self):
         if self.cache is None:
-            self.cache = get_settings_instance().value(self.key, self.default_value, self.dtype)
+            settings = get_settings_instance()
+            value = settings.value(self.key, self.default_value, self.dtype)
+            # Ensure default is written if key doesn't exist
+            if not settings.contains(self.key):
+                settings.setValue(self.key, self.default_value)
+            self.cache = value
         return self.cache
 
     def set(self, value):
@@ -107,7 +112,7 @@ fourphase_calibration_center = Setting('calibration_four/center', 0.0, float)
 device_config_device_type = Setting('device_configuration/device_type', 0, int)
 device_config_waveform_type = Setting('device_configuration/waveform_type', 1, int)
 device_config_min_freq = Setting('device_configuration/min_frequency', 500, float)
-device_config_max_freq = Setting('device_configuration/max_frequency', 1000, float)
+device_config_max_freq = Setting('device_configuration/max_frequency', 1500, float)
 device_config_waveform_amplitude_amps = Setting('device_configuration/waveform_amplitude_amps', 0.120, float)
 
 media_sync_default_source = Setting('media_sync/default_source', 'Internal', str)
@@ -118,7 +123,7 @@ media_sync_vlc_username = Setting('media_sync/vlc_username', '', str)
 media_sync_vlc_password = Setting('media_sync/vlc_password', '1234', str)
 media_sync_kodi_address = Setting('media_sync/kodi_address', 'ws://127.0.0.1:9090', str)
 media_sync_stop_audio_automatically = Setting('media_sync/stop_audio_automatically', True, bool)
-media_sync_time_offset_ms = Setting('media_sync/time_offset_ms', 0, int)
+media_sync_funscript_offset = Setting('media_sync/funscript_offset', 0.0, float)
 
 audio_api = Setting("audio/api-name", "", str)
 audio_output_device = Setting("audio/device-name", "", str)
@@ -167,30 +172,31 @@ focstim_ip = Setting("focstim/wifi_ip", '', str)
 
 neostim_serial_port = Setting("neostim/serial_port", '', str)
 
-# Pattern preferences - we'll store this as a JSON string and convert to dict
-import json
+_ui_mod_settings = None
 
-class DictSetting(Setting):
-    """Special setting for dictionary data stored as JSON string"""
-    def __init__(self, key, default_value):
-        super().__init__(key, default_value, str)
-    
-    def get(self):
-        if self.cache is None:
-            json_str = get_settings_instance().value(self.key, json.dumps(self.default_value), str)
-            try:
-                self.cache = json.loads(json_str) if json_str else self.default_value
-            except (json.JSONDecodeError, TypeError):
-                self.cache = self.default_value
-        return self.cache
-    
-    def set(self, value):
-        json_str = json.dumps(value)
-        current_cache = self.cache if self.cache is not None else self.default_value
-        if json_str != json.dumps(current_cache):
-            get_settings_instance().setValue(self.key, json_str)
-            self.cache = value
-            # Force immediate sync to ensure persistence
-            get_settings_instance().sync()
 
-pattern_enabled = DictSetting("patterns/enabled", {})
+def _ensure_ui_mod_settings_loaded():
+    global _ui_mod_settings
+    if _ui_mod_settings is None:
+        from ui_mods.settings import build_ui_mod_settings
+        _ui_mod_settings = build_ui_mod_settings(Setting, get_settings_instance)
+    return _ui_mod_settings
+
+
+# Coyote settings live in coyote_plugin.settings and UI-mod settings live in
+# ui_mods.settings — both lazily re-exported to avoid circular imports.
+def __getattr__(name):
+    if name.startswith('coyote_'):
+        import coyote_plugin.settings as _cs
+        value = getattr(_cs, name, None)
+        if value is not None:
+            globals()[name] = value
+            return value
+
+    ui_settings = _ensure_ui_mod_settings_loaded()
+    if name in ui_settings:
+        value = ui_settings[name]
+        globals()[name] = value
+        return value
+
+    raise AttributeError(f"module 'qt_ui.settings' has no attribute {name!r}")

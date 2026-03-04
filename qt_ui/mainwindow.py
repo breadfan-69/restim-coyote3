@@ -2,7 +2,7 @@ import os
 import sys
 from enum import Enum
 
-from PySide6 import QtGui
+from PySide6 import QtGui, QtCore
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -10,8 +10,12 @@ from PySide6.QtWidgets import (
 )
 import logging
 
+# Import restim_rc to register Qt resources
+import restim_rc
+
 from net.media_source.interface import MediaConnectionState
 from qt_ui.algorithm_factory import AlgorithmFactory
+from qt_ui.device_wizard.axes import AxisEnum
 from qt_ui.audio_write_dialog import AudioWriteDialog
 from qt_ui.main_window_ui import Ui_MainWindow
 import qt_ui.patterns.threephase_patterns
@@ -34,6 +38,8 @@ from device.focstim.proto_device import FOCStimProtoDevice, LSM6DSOX_SAMPLERATE_
 from device.neostim.neostim_device import NeoStim
 from qt_ui.widgets.icon_with_connection_status import IconWithConnectionStatus
 from stim_math.axis import create_temporal_axis
+from ui_mods.theme import apply_theme, update_graphics_views
+from ui_mods.icon_loader import load_icon_theme, update_taskbar_icon_windows_api
 
 
 import sounddevice as sd
@@ -44,6 +50,12 @@ from qt_ui.device_wizard.enums import DeviceConfiguration, DeviceType, WaveformT
 from qt_ui.tcode_command_router import TCodeCommandRouter
 
 logger = logging.getLogger('restim.main')
+
+_device_plugins = []
+
+
+def register_device_plugin(plugin):
+    _device_plugins.append(plugin)
 
 
 class PlayState(Enum):
@@ -56,10 +68,36 @@ class Window(QMainWindow, Ui_MainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setupUi(self)
+        self._runtime_device_plugins = list(_device_plugins)
+
+        try:
+            from coyote_plugin import register_coyote
+            register_coyote(self)
+        except Exception:
+            pass
+
+        try:
+            from ui_mods import register_ui_mods
+            register_ui_mods(self)
+        except Exception:
+            pass
+
+        # Set a unique AppUserModelID for every instance to prevent taskbar stacking
+        try:
+            import ctypes
+            import uuid
+            unique_id = f"restim.stimulation.app.{uuid.uuid4()}"
+            shell32 = ctypes.windll.shell32
+            shell32.SetCurrentProcessExplicitAppUserModelID(unique_id)
+        except Exception as e:
+            logger.debug(f"Failed to set AppUserModelID: {e}")
 
         self.playstate = PlayState.STOPPED
         self.tab_volume.set_play_state(self.playstate)
         self.refresh_play_button_icon()
+
+        # Offset widget toolbar action storage
+        self.funscript_offset_action = None
 
         # set the first tab as active tab, in case we forgot to set it in designer
         self.tabWidget.setCurrentIndex(0)
@@ -67,6 +105,9 @@ class Window(QMainWindow, Ui_MainWindow):
         icon = QtGui.QIcon()
         icon.addPixmap(QtGui.QPixmap(resources.favicon), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.setWindowIcon(icon)
+
+        # Load icon theme from settings
+        self._load_icon_theme()
 
         # TODO: credit https://glyphs.fyi/ for icons
         spacer = QWidget()
@@ -82,6 +123,9 @@ class Window(QMainWindow, Ui_MainWindow):
 
         self.doubleSpinBox_volume.setValue(qt_ui.settings.volume_default_level.get())
         self.tab_volume.link_volume_controls(self.doubleSpinBox_volume, self.progressBar_volume)
+
+        # Initialize funscript offset widget (lazy loaded)
+        self.funscript_offset_container = None
 
         # default alpha/beta axis. Used by:
         # pattern generator
@@ -128,6 +172,8 @@ class Window(QMainWindow, Ui_MainWindow):
             # TODO: neostim
         )
 
+        self._tcode_axis_controllers = self._build_tcode_axis_controller_map()
+
         # threephase view
         self.motion_3 = qt_ui.patterns.threephase_patterns.ThreephaseMotionGenerator(self, self.alpha, self.beta)
         self.graphicsView_threephase.set_transform_params(self.tab_threephase.transform_params)
@@ -140,7 +186,6 @@ class Window(QMainWindow, Ui_MainWindow):
             self, self.intensity_a, self.intensity_b, self.intensity_c, self.intensity_d)
         self.graphicsView_fourphase.mousePositionChanged.connect(self.motion_4.mouse_event)
         self.motion_4.position_updated.connect(self.graphicsView_fourphase.set_electrode_intensities)
-        self.graphicsView_fourphase.set_sensor_widget(self.page_sensors)
 
         # TODO: implement details for 4-phase
         self.tab_details.set_axis(
@@ -160,16 +205,18 @@ class Window(QMainWindow, Ui_MainWindow):
         self.output_device = None
 
         self.websocket_server = net.websocketserver.WebSocketServer(self)
-        self.websocket_server.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.websocket_server.new_tcode_command.connect(self.on_tcode_command)
+        self.websocket_server.all_clients_disconnected.connect(self.on_tcode_clients_disconnected)
 
         self.tcpudp_server = net.tcpudpserver.TcpUdpServer(self)
-        self.tcpudp_server.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.tcpudp_server.new_tcode_command.connect(self.on_tcode_command)
+        self.tcpudp_server.all_clients_disconnected.connect(self.on_tcode_clients_disconnected)
 
         self.serial_proxy = net.serialproxy.SerialProxy(self)
-        self.serial_proxy.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.serial_proxy.new_tcode_command.connect(self.on_tcode_command)
 
         self.buttplug_wsdm_client = net.buttplug_wsdm_client.ButtplugWsdmClient(self)
-        self.buttplug_wsdm_client.new_tcode_command.connect(self.tcode_command_router.route_command)
+        self.buttplug_wsdm_client.new_tcode_command.connect(self.on_tcode_command)
 
         self.tab_volume.set_monitor_axis([
             self.alpha,
@@ -184,12 +231,17 @@ class Window(QMainWindow, Ui_MainWindow):
         self.page_media.dialogOpened.connect(self.signal_stop)
         self.page_media.funscriptMappingChanged.connect(self.funscript_mapping_changed)
         self.page_media.connectionStatusChanged.connect(self.media_connection_status_changed)
+        self.page_media.mediaPlayerSourceChanged.connect(self._on_media_player_source_changed)
         self.page_media.bake_audio_button.clicked.connect(self.open_write_audio_dialog)
+
+        # Initialize offset widget visibility based on initial media player
+        self._update_funscript_offset_visibility()
 
         # trigger updates.... maybe not all needed?
         # self.tab_carrier.settings_changed()
         self.tab_pulse_settings.settings_changed()
         self.tab_threephase.settings_changed()
+        self.tab_coyote_calibration.settings_changed()
         self.tab_volume.refresh_master_volume()
         self.tab_vibrate.settings_changed()
 
@@ -208,16 +260,22 @@ class Window(QMainWindow, Ui_MainWindow):
         self.funscript_decomposition_dialog = qt_ui.funscript_decomposition_dialog.FunscriptDecompositionDialog()
         self.actionFunscript_decomposition.triggered.connect(self.open_funscript_decomposition_dialog)
 
-        self.settings_dialog = qt_ui.preferences_dialog.PreferencesDialog()
+        self.settings_dialog = qt_ui.preferences_dialog.PreferencesDialog(self)
         self.actionPreferences.triggered.connect(self.open_preferences_dialog)
 
-        self.about_dialog = qt_ui.about_dialog.AboutDialog(self)
-        self.actionAbout.triggered.connect(self.open_about_dialog)
+        # Dark mode is always enabled
 
         self.iconMedia = IconWithConnectionStatus(self.actionMedia.icon(), self.toolBar.widgetForAction(self.actionMedia))
         self.actionMedia.setIcon(QIcon(self.iconMedia))
         # self.iconDevice = IconWithConnectionStatus(self.actionDevice.icon(), self.toolBar.widgetForAction(self.actionDevice))
         # self.actionDevice.setIcon(QIcon(self.iconDevice))
+
+
+        # Instantiate AboutDialog
+        self.about_dialog = qt_ui.about_dialog.AboutDialog(self)
+
+        # Connect Help->About action to open_about_dialog
+        self.actionAbout.triggered.connect(self.open_about_dialog)
 
         self.connect_signals_slots_actionbar()
 
@@ -234,6 +292,22 @@ class Window(QMainWindow, Ui_MainWindow):
         self.autostart_timer.setSingleShot(True)
         self.autostart_timer.timeout.connect(self.autostart_timeout)
         self.autostart_timer.setInterval(5000)
+
+    def register_runtime_device_plugin(self, plugin):
+        self._runtime_device_plugins.append(plugin)
+
+    def _notify_device_plugins(self, method_name, *args):
+        for plugin in self._runtime_device_plugins:
+            method = getattr(plugin, method_name, None)
+            if callable(method):
+                method(self, *args)
+
+    def _dispatch_device_plugin(self, method_name, *args) -> bool:
+        for plugin in self._runtime_device_plugins:
+            method = getattr(plugin, method_name, None)
+            if callable(method) and method(self, *args):
+                return True
+        return False
 
     def connect_signals_slots_actionbar(self):
         def uncheck():
@@ -285,6 +359,48 @@ class Window(QMainWindow, Ui_MainWindow):
             self.iconMedia.set_connected()
         else:
             self.iconMedia.set_not_connected()
+
+    def _build_tcode_axis_controller_map(self):
+        mapping = {
+            self.tab_carrier.axis_carrier: [self.tab_carrier.carrier_controller],
+            self.tab_pulse_settings.axis_carrier_frequency: [self.tab_pulse_settings.carrier_controller],
+            self.tab_pulse_settings.axis_pulse_frequency: [self.tab_pulse_settings.pulse_frequency_controller],
+            self.tab_pulse_settings.axis_pulse_width: [self.tab_pulse_settings.pulse_width_controller],
+            self.tab_pulse_settings.axis_pulse_interval_random: [self.tab_pulse_settings.pulse_interval_random_controller],
+            self.tab_pulse_settings.axis_pulse_rise_time: [self.tab_pulse_settings.pulse_rise_time_controller],
+        }
+        self._notify_device_plugins('extend_tcode_axis_controller_map', mapping)
+        cleaned = {}
+        for axis, controllers in mapping.items():
+            cleaned[axis] = [controller for controller in controllers if controller is not None]
+        return cleaned
+
+    def on_tcode_command(self, cmd):
+        axis = self.tcode_command_router.route_command(cmd)
+        if axis is None:
+            return
+        for controller in self._tcode_axis_controllers.get(axis, []):
+            controller.mark_external_activity()
+
+    def _release_tcode_axis_locks(self):
+        released = set()
+        for controllers in self._tcode_axis_controllers.values():
+            for controller in controllers:
+                if controller in released:
+                    continue
+                controller.release_external_control()
+                released.add(controller)
+
+    def on_tcode_clients_disconnected(self):
+        """
+        Called when all TCode clients disconnect from a server (websocket/TCP).
+        Reset TCode-controlled axes back to safe defaults so they don't stay
+        stuck at whatever value the last client set.
+        """
+        logger.info('All TCode clients disconnected, resetting TCode-controlled axes.')
+        self.tab_volume.axis_api_volume.add(1.0)
+        self.tab_volume.axis_external_volume.add(1.0)
+        self._release_tcode_axis_locks()
 
     def funscript_mapping_changed(self):
         """
@@ -339,6 +455,8 @@ class Window(QMainWindow, Ui_MainWindow):
         self.tab_pulse_settings.pulse_interval_random_controller.link_axis(algorithm_factory.get_axis_pulse_interval_random())
         self.tab_pulse_settings.pulse_rise_time_controller.link_axis(algorithm_factory.get_axis_pulse_rise_time())
 
+        self._notify_device_plugins('on_funscript_mapping_changed', algorithm_factory)
+
         # vibration tab
         self.tab_vibrate.vib1_enabled_controller.link_axis(algorithm_factory.get_axis_vib1_enabled())
         self.tab_vibrate.vib1_freq_controller.link_axis(algorithm_factory.get_axis_vib1_frequency())
@@ -372,11 +490,13 @@ class Window(QMainWindow, Ui_MainWindow):
                     self.tab_fourphase,
                     self.tab_pulse_settings,
                     self.tab_carrier,
+                    self.tab_coyote_calibration,
                     self.tab_volume,
                     self.tab_vibrate,
                     self.tab_details,
                     self.tab_a_b_testing,
-                    self.tab_neostim}
+                    self.tab_neostim,
+                    self.tab_coyote}
 
         visible = {self.tab_threephase, self.tab_volume, self.tab_vibrate, self.tab_details}
 
@@ -404,18 +524,47 @@ class Window(QMainWindow, Ui_MainWindow):
             set_visible(tab, tab in visible)
 
         # set safety limits
-        self.tab_carrier.set_safety_limits(config.min_frequency, config.max_frequency)
-        self.tab_pulse_settings.set_safety_limits(config.min_frequency, config.max_frequency)
+        # Carrier UI ranges should match C0 policy per device family.
+        if config.device_type == DeviceType.AUDIO_THREE_PHASE:
+            if config.waveform_type == WaveformType.CONTINUOUS:
+                carrier_min, carrier_max = 500, 1500
+            else:
+                carrier_min, carrier_max = 500, 2000
+        elif config.device_type in (DeviceType.FOCSTIM_THREE_PHASE, DeviceType.FOCSTIM_FOUR_PHASE):
+            carrier_min, carrier_max = 500, 2000
+        else:
+            carrier_min, carrier_max = config.min_frequency, config.max_frequency
+
+        self.tab_carrier.set_safety_limits(carrier_min, carrier_max)
+        self.tab_pulse_settings.set_safety_limits(carrier_min, carrier_max)
         self.tab_a_b_testing.set_safety_limits(config.min_frequency, config.max_frequency)
 
         # configure tcode router
-        if config.waveform_type == WaveformType.CONTINUOUS:
+        # Continuous carrier tab is only the active carrier control for audio continuous mode.
+        # All other supported modes use pulse carrier settings.
+        if config.device_type == DeviceType.AUDIO_THREE_PHASE and config.waveform_type == WaveformType.CONTINUOUS:
             self.tcode_command_router.set_carrier_axis(self.tab_carrier.axis_carrier)
-        if config.waveform_type == WaveformType.PULSE_BASED:
+        else:
             self.tcode_command_router.set_carrier_axis(self.tab_pulse_settings.axis_carrier_frequency)
 
+        self.tcode_command_router.set_pulse_frequency_axis(self.tab_pulse_settings.axis_pulse_frequency)
+
+        if config.device_type == DeviceType.AUDIO_THREE_PHASE:
+            if config.waveform_type == WaveformType.CONTINUOUS:
+                self.tcode_command_router.set_carrier_limits(500, 1500)
+            else:
+                self.tcode_command_router.set_carrier_limits(500, 2000)
+            self.tcode_command_router.set_allowed_axes(None)
+        elif config.device_type in (DeviceType.FOCSTIM_THREE_PHASE, DeviceType.FOCSTIM_FOUR_PHASE):
+            self.tcode_command_router.set_carrier_limits(500, 2000)
+            self.tcode_command_router.set_allowed_axes(None)
+        else:
+            self.tcode_command_router.set_allowed_axes(None)
+
+        self.tcode_command_router.set_pulse_frequency_limits(1, 100)
+
         # populate motion generator and patterns combobox
-        if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.NEOSTIM_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE):
+        if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.NEOSTIM_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE, DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             self.motion_3.set_enable(True)
             self.motion_4.set_enable(False)
             self.stackedWidget_visual.setCurrentIndex(
@@ -428,6 +577,10 @@ class Window(QMainWindow, Ui_MainWindow):
             self.stackedWidget_visual.setCurrentIndex(
                 self.stackedWidget_visual.indexOf(self.page_fourphase)
             )
+        
+        self.refresh_pattern_combobox()
+
+        self._notify_device_plugins('on_device_changed', config)
 
         if config.device_type == DeviceType.AUDIO_THREE_PHASE:
             self.graphicsView_threephase.set_background(stereo=True)
@@ -450,10 +603,10 @@ class Window(QMainWindow, Ui_MainWindow):
             self.signal_stop(PlayState.STOPPED)
 
     def signal_start(self):
-        assert self.output_device is None
-
         self.autostart_timer.stop()
         device = DeviceConfiguration.from_settings()
+        self._notify_device_plugins('before_start', device)
+
         algorithm_factory = AlgorithmFactory(
             self,
             FunscriptKitModel.load_from_settings(),
@@ -463,6 +616,9 @@ class Window(QMainWindow, Ui_MainWindow):
             load_funscripts=not self.page_media.is_internal(),
         )
         algorithm = algorithm_factory.create_algorithm(device)
+
+        if self._dispatch_device_plugin('on_start', device, algorithm):
+            return
 
         if device.device_type in [
             DeviceType.AUDIO_THREE_PHASE,
@@ -520,12 +676,30 @@ class Window(QMainWindow, Ui_MainWindow):
             raise RuntimeError("Unknown device type")
 
     def signal_stop(self, new_playstate: PlayState = PlayState.STOPPED):
+        """Stop signal generation."""
+        if self._dispatch_device_plugin('on_stop', new_playstate):
+            return
+
         if self.output_device is not None:
-            self.output_device.stop()
+            self.output_device.stop()  # Other devices may need full stop
             self.output_device = None
         self.playstate = new_playstate
         self.tab_volume.set_play_state(self.playstate)
         self.refresh_play_button_icon()
+
+    def _load_icon_theme(self):
+        """Load the icon theme from settings."""
+        load_icon_theme(self, qt_ui.settings, logger)
+
+    def update_window_icon(self):
+        """Update the window icon (called from preferences dialog when theme changes)"""
+        self._load_icon_theme()
+        # Try to update taskbar icon using Windows API
+        self._update_taskbar_icon_windows_api()
+
+    def _update_taskbar_icon_windows_api(self):
+        """Update taskbar icon using Windows API (experimental)."""
+        update_taskbar_icon_windows_api(self, qt_ui.settings, logger)
 
     def autostart_timeout(self):
         print('autostart timeout')
@@ -538,14 +712,30 @@ class Window(QMainWindow, Ui_MainWindow):
             self.actionStart.setIcon(QtGui.QIcon(":/restim/stop-sign_poly.svg"))
             self.actionStart.setText("Stop")
         else:
-            self.actionStart.setIcon(QtGui.QIcon(":/restim/play_poly.svg"))
+            # Create icon from pixmap with custom dark green color
+            pixmap = QtGui.QPixmap(65, 48)
+            pixmap.fill(QtCore.Qt.transparent)
+            painter = QtGui.QPainter(pixmap)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            # Draw a dark green triangle play button
+            polygon = QtGui.QPolygon([
+                QtCore.QPoint(15, 10),
+                QtCore.QPoint(15, 38),
+                QtCore.QPoint(50, 24)
+            ])
+            painter.setBrush(QtGui.QBrush(QtGui.QColor("#3ec941")))
+            painter.setPen(QtGui.QPen(QtGui.QColor("#3ec941")))
+            painter.drawPolygon(polygon)
+            painter.end()
+            self.actionStart.setIcon(QtGui.QIcon(pixmap))
             self.actionStart.setText("Start")
 
     def open_setup_wizard(self):
         self.signal_stop(PlayState.STOPPED)
         self.wizard.exec()
         self.refresh_device_type()
-        self.reload_settings()
+        # Delay reload_settings to allow new Coyote device to initialize
+        QTimer.singleShot(100, self.reload_settings)
 
     def open_funscript_conversion_dialog(self):
         self.signal_stop(PlayState.STOPPED)
@@ -592,12 +782,13 @@ class Window(QMainWindow, Ui_MainWindow):
         self.motion_3.refreshSettings()
         self.motion_4.refreshSettings()
         self.refresh_pattern_combobox()
+        self._load_icon_theme()  # reload icon if theme changed
 
     def refresh_pattern_combobox(self):
         config = DeviceConfiguration.from_settings()
         currently_selected_text = self.comboBox_patternSelect.currentText()
 
-        if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.NEOSTIM_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE):
+        if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.NEOSTIM_THREE_PHASE, DeviceType.FOCSTIM_THREE_PHASE, DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             self.comboBox_patternSelect.clear()
             for pattern in self.motion_3.patterns:
                 self.comboBox_patternSelect.addItem(pattern.name(), pattern)
@@ -624,14 +815,102 @@ class Window(QMainWindow, Ui_MainWindow):
         self.tab_vibrate.save_settings()
         self.tab_pulse_settings.save_settings()
         self.tab_volume.save_settings()
-        self.page_media.save_settings()
 
     def closeEvent(self, event):
         logger.warning('Shutting down')
+        self._notify_device_plugins('on_close')
         if self.output_device is not None:
             self.output_device.stop()
         self.save_settings()
         event.accept()
+
+    def _on_media_player_source_changed(self):
+        """Handle media player source changes - update offset widget visibility"""
+        logger.info(f"_on_media_player_source_changed called, is_internal={self.page_media.is_internal()}")
+        self._update_funscript_offset_visibility()
+        
+        # Stop playback when switching to internal player
+        if self.page_media.is_internal() and self.playstate == PlayState.PLAYING:
+            self.signal_stop(PlayState.STOPPED)
+
+    def _update_funscript_offset_visibility(self):
+        """Show/hide funscript offset widget based on media player type (internal/external)"""
+        if not self.page_media.is_internal():
+            # External media player - create widget if needed and show it
+            if self.funscript_offset_container is None:
+                self._create_funscript_offset_widget()
+            if self.funscript_offset_action is not None:
+                self.funscript_offset_action.setVisible(True)
+        else:
+            # Internal media player - hide offset widget
+            if self.funscript_offset_action is not None:
+                self.funscript_offset_action.setVisible(False)
+
+    def _create_funscript_offset_widget(self):
+        """Create and configure the funscript offset widget"""
+        from PySide6.QtWidgets import QGroupBox, QDoubleSpinBox, QVBoxLayout
+        
+        self.funscript_offset_container = QGroupBox("Offset (s)")
+        layout = QVBoxLayout()
+        layout.setContentsMargins(4, 4, 4, 4)
+        
+        self.funscript_offset_spinbox = QDoubleSpinBox()
+        self.funscript_offset_spinbox.setRange(-1.0, 1.0)
+        self.funscript_offset_spinbox.setSingleStep(0.0125)
+        self.funscript_offset_spinbox.setDecimals(4)
+        self.funscript_offset_spinbox.setValue(qt_ui.settings.media_sync_funscript_offset.get())
+        self.funscript_offset_spinbox.setToolTip("Adjust funscript sync offset (±1.0 seconds)")
+        self.funscript_offset_spinbox.valueChanged.connect(self._on_funscript_offset_changed)
+        
+        layout.addWidget(self.funscript_offset_spinbox)
+        self.funscript_offset_container.setLayout(layout)
+        
+        # Add to toolbar right after Media button
+        # Find the index of actionMedia and insert the widget right after it
+        actions = self.toolBar.actions()
+        media_index = actions.index(self.actionMedia) if self.actionMedia in actions else -1
+        if media_index >= 0 and media_index < len(actions) - 1:
+            # Insert before the next action after Media
+            self.funscript_offset_action = self.toolBar.insertWidget(actions[media_index + 1], self.funscript_offset_container)
+        else:
+            # Fallback: insert before the first separator or action we encounter after Media
+            self.funscript_offset_action = self.toolBar.insertWidget(self.actionStart, self.funscript_offset_container)
+        
+        # Apply current theme
+        self._apply_funscript_offset_theme()
+
+    def _apply_funscript_offset_theme(self):
+        """Apply light/dark mode theming to offset widget"""
+        if self.funscript_offset_container is None:
+            return
+        
+        palette = self.palette()
+        bg_color = palette.color(self.backgroundRole())
+        text_color = palette.color(self.foregroundRole())
+        
+        stylesheet = f"""
+            QGroupBox {{
+                color: {text_color.name()};
+                border: 1px solid {text_color.name()};
+                border-radius: 3px;
+                margin-top: 0.5em;
+                padding-top: 0.5em;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px 0 3px;
+            }}
+            QDoubleSpinBox {{
+                background-color: {bg_color.name()};
+                color: {text_color.name()};
+            }}
+        """
+        self.funscript_offset_container.setStyleSheet(stylesheet)
+
+    def _on_funscript_offset_changed(self, value: float):
+        """Handle funscript offset spinbox value changes"""
+        qt_ui.settings.media_sync_funscript_offset.set(value)
 
 
 def run():
@@ -650,6 +929,7 @@ def run():
     sys.excepthook = excepthook
 
     app = QApplication(sys.argv)
+    apply_theme(app)
     win = Window()
     win.show()
     sys.exit(app.exec())
