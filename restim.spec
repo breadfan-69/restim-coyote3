@@ -2,7 +2,16 @@
 
 added_files = [
     ('resources/phase diagram bg.svg', 'resources/'),
-    ('resources/favicon.png', 'resources/')
+    ('resources/phase diagram bg light.svg', 'resources/'),
+    ('resources/phase diagram foc dark.svg', 'resources/'),
+    ('resources/phase diagram stereostim dark.svg', 'resources/'),
+    ('resources/favicon.png', 'resources/'),
+    ('resources/icons', 'resources/icons'),
+    ('resources/media_players', 'resources/media_players'),
+    ('resources/wizard', 'resources/wizard'),
+    ('coyote_plugin', 'coyote_plugin'),
+    ('ui_mods', 'ui_mods'),
+    ('device/coyote', 'device/coyote'),
 ]
 
 a = Analysis(
@@ -10,8 +19,24 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=added_files,
-    hiddenimports=[],
-    hookspath=[],
+    hiddenimports=[
+        'coyote_plugin',
+        'coyote_plugin.runtime_plugin',
+        'coyote_plugin.wizard_integration',
+        'coyote_plugin.algorithm_factory',
+        'coyote_plugin.settings',
+        'coyote_plugin.params',
+        'coyote_plugin.device',
+        'coyote_plugin.device.constants',
+        'coyote_plugin.device.device',
+        'device.coyote',
+        'device.coyote.coyote_device',
+        'ui_mods',
+        'ui_mods.theme',
+        'ui_mods.icon_loader',
+        'ui_mods.settings',
+    ],
+    hookspath=['pyinstaller-hooks'],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
