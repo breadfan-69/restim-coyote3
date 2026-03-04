@@ -582,7 +582,7 @@ class Window(QMainWindow, Ui_MainWindow):
 
         self._notify_device_plugins('on_device_changed', config)
 
-        if config.device_type == DeviceType.AUDIO_THREE_PHASE:
+        if config.device_type in (DeviceType.AUDIO_THREE_PHASE, DeviceType.COYOTE_THREE_PHASE, DeviceType.COYOTE_TWO_CHANNEL):
             self.graphicsView_threephase.set_background(stereo=True)
             self.tab_threephase.phase_widget_calibration.set_background(stereo=True)
         else:
@@ -858,7 +858,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.funscript_offset_spinbox.setRange(-1.0, 1.0)
         self.funscript_offset_spinbox.setSingleStep(0.0125)
         self.funscript_offset_spinbox.setDecimals(4)
-        self.funscript_offset_spinbox.setValue(qt_ui.settings.media_sync_funscript_offset.get())
+        self.funscript_offset_spinbox.setValue(qt_ui.settings.media_sync_time_offset_ms.get() / 1000.0)
         self.funscript_offset_spinbox.setToolTip("Adjust funscript sync offset (±1.0 seconds)")
         self.funscript_offset_spinbox.valueChanged.connect(self._on_funscript_offset_changed)
         
@@ -910,7 +910,7 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def _on_funscript_offset_changed(self, value: float):
         """Handle funscript offset spinbox value changes"""
-        qt_ui.settings.media_sync_funscript_offset.set(value)
+        qt_ui.settings.media_sync_time_offset_ms.set(int(value * 1000))
 
 
 def run():
@@ -931,5 +931,6 @@ def run():
     app = QApplication(sys.argv)
     apply_theme(app)
     win = Window()
+    update_graphics_views(app)  # Apply theme to QGraphicsView widgets after window is created
     win.show()
     sys.exit(app.exec())

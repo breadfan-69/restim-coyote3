@@ -10,7 +10,7 @@ from qt_ui import resources
 from stim_math.threephase_coordinate_transform import ThreePhaseCoordinateTransform, \
     ThreePhaseCoordinateTransformMapToEdge
 
-from PySide6.QtGui import QColor, QMouseEvent
+from PySide6.QtGui import QColor, QMouseEvent, QPen
 from PySide6 import QtCore, QtWidgets, QtGui, QtSvgWidgets
 from PySide6.QtCore import Qt
 
@@ -41,6 +41,8 @@ class ThreephaseWidgetBase(QtWidgets.QGraphicsView):
         self.setScene(scene)
         self.scene = scene
         self.background_svg = None
+        self._dark_mode = False
+        self._stereo = True
         self.set_background(stereo=True)
         self.setBackgroundBrush(Qt.white)
 
@@ -82,16 +84,34 @@ class ThreephaseWidgetBase(QtWidgets.QGraphicsView):
         if self.background_svg:
             self.scene.removeItem(self.background_svg)
 
+        self._stereo = stereo
+
         if stereo:
-            self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram stereostim.svg")
+            if self._dark_mode:
+                self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram stereostim dark.svg")
+            else:
+                self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram stereostim.svg")
         else:
-            self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram foc.svg")
+            if self._dark_mode:
+                self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram foc dark.svg")
+            else:
+                self.background_svg = QtSvgWidgets.QGraphicsSvgItem(":/restim/phase diagram foc.svg")
 
         self.scene.addItem(self.background_svg)
         self.background_svg.setPos(
             -self.background_svg.boundingRect().width()/2.0,
             -self.background_svg.boundingRect().height()/2.0)
         self.background_svg.setZValue(-1)
+
+    def set_theme(self, dark_mode: bool):
+        """Called by update_graphics_views to switch between dark/light SVG variants."""
+        self._dark_mode = dark_mode
+        if dark_mode:
+            self.setBackgroundBrush(QColor("#2d2d2d"))
+        else:
+            self.setBackgroundBrush(Qt.white)
+        # Reload the SVG with the correct variant
+        self.set_background(stereo=self._stereo)
 
 
 class ThreephaseWidgetAlphaBeta(ThreephaseWidgetBase):
@@ -119,7 +139,7 @@ class ThreephaseWidgetAlphaBeta(ThreephaseWidgetBase):
         self.scene.addItem(self.arrow)
 
         self.border = QGraphicsEllipseItem(0, 0, 83, 83)
-        self.border.setPen(QColor.fromRgb(0, 0, 0))
+        self.border.setPen(QColor.fromRgb(100, 150, 255))  # Light blue - visible on both dark and light
         self.scene.addItem(self.border)
 
         self.arc = ArcSegment(center=QPointF(*ab_to_item_pos(0, 0)), radius=80)
@@ -307,7 +327,7 @@ class Path(QtWidgets.QGraphicsPathItem):
 
         pen = painter.pen()
         pen.setWidth(1)
-        pen.setColor(Qt.black)
+        pen.setColor(QColor.fromRgb(100, 150, 255))  # Light blue - visible on both dark and light
         painter.setPen(pen)
 
         path = self.directPath()
@@ -348,6 +368,11 @@ class ArcSegment(QtWidgets.QGraphicsPathItem):
     def paint(self, painter: QtGui.QPainter, option, widget=None) -> None:
         if not self._enabled:
             return
+
+        pen = QPen()
+        pen.setColor(QColor.fromRgb(100, 150, 255))  # Light blue - visible on both dark and light
+        pen.setWidth(2)
+        painter.setPen(pen)
 
         painter.drawArc(
             int(self._center.x()) - self._radius,

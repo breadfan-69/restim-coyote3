@@ -12,6 +12,8 @@ class DeviceType(Enum):
     FOCSTIM_THREE_PHASE = 5
     NEOSTIM_THREE_PHASE = 6
     FOCSTIM_FOUR_PHASE = 7
+    COYOTE_THREE_PHASE = 8
+    COYOTE_TWO_CHANNEL = 9
 
 
 class WaveformType(Enum):
@@ -45,14 +47,3 @@ class DeviceConfiguration:
             settings.device_config_max_freq.get(),
             settings.device_config_waveform_amplitude_amps.get(),
         )
-
-
-_extra_device_types = {}
-
-
-def register_device_type(name: str, value: int):
-    _extra_device_types[name] = value
-
-
-def get_registered_device_types() -> dict[str, int]:
-    return dict(_extra_device_types)

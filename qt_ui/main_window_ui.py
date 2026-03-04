@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QFrame,
 
 from qt_ui.ab_test_widget import ABTestWidget
 from qt_ui.carrier_settings_widget import CarrierSettingsWidget
+from qt_ui.coyote_settings_widget import CoyoteSettingsWidget
 from qt_ui.four_phase_settings_widget import FourPhaseSettingsWidget
 from qt_ui.media_settings_widget import MediaSettingsWidget
 from qt_ui.neostim_settings_widget import NeoStimSettingsWidget
@@ -221,6 +222,12 @@ class Ui_MainWindow(object):
         self.tab_neostim = NeoStimSettingsWidget()
         self.tab_neostim.setObjectName(u"tab_neostim")
         self.tabWidget.addTab(self.tab_neostim, "")
+        self.tab_coyote = CoyoteSettingsWidget()
+        self.tab_coyote.setObjectName(u"tab_coyote")
+        self.tabWidget.addTab(self.tab_coyote, "")
+        self.tab_coyote_calibration = ThreePhaseSettingsWidget()
+        self.tab_coyote_calibration.setObjectName(u"tab_coyote_calibration")
+        self.tabWidget.addTab(self.tab_coyote_calibration, "")
         self.tab_a_b_testing = ABTestWidget()
         self.tab_a_b_testing.setObjectName(u"tab_a_b_testing")
         self.tabWidget.addTab(self.tab_a_b_testing, "")
@@ -333,6 +340,8 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_carrier), QCoreApplication.translate("MainWindow", u"Carrier settings", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_pulse_settings), QCoreApplication.translate("MainWindow", u"Pulse settings", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_neostim), QCoreApplication.translate("MainWindow", u"NeoStim", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_coyote), QCoreApplication.translate("MainWindow", u"Coyote", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_coyote_calibration), QCoreApplication.translate("MainWindow", u"Calibration", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_a_b_testing), QCoreApplication.translate("MainWindow", u"A/B testing", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_volume), QCoreApplication.translate("MainWindow", u"Volume", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_vibrate), QCoreApplication.translate("MainWindow", u"Vibration", None))
